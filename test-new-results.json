@@ -1,0 +1,93 @@
+[
+  {
+    "name": "充值记录",
+    "path": "/finance/records",
+    "status": "PASS",
+    "details": [
+      "Tables: 3, Cards: 6, API calls: 2"
+    ],
+    "apiCalls": 2,
+    "apiErrors": 0,
+    "uiElements": {
+      "tables": 3,
+      "cards": 6
+    }
+  },
+  {
+    "name": "流量报表",
+    "path": "/reports/flow",
+    "status": "PASS",
+    "details": [
+      "Tables: 0, Cards: 9, API calls: 2"
+    ],
+    "apiCalls": 2,
+    "apiErrors": 0,
+    "uiElements": {
+      "tables": 0,
+      "cards": 9
+    }
+  },
+  {
+    "name": "角色管理",
+    "path": "/system/roles",
+    "status": "PASS",
+    "details": [
+      "Tables: 3, Cards: 2, API calls: 2"
+    ],
+    "apiCalls": 2,
+    "apiErrors": 0,
+    "uiElements": {
+      "tables": 3,
+      "cards": 2
+    }
+  },
+  {
+    "name": "账户管理",
+    "path": "/system/users",
+    "status": "PASS",
+    "details": [
+      "Tables: 3, Cards: 2, API calls: 3"
+    ],
+    "apiCalls": 3,
+    "apiErrors": 0,
+    "uiElements": {
+      "tables": 3,
+      "cards": 2
+    }
+  },
+  {
+    "name": "API: GET /api/v1/orders?orderType=RECHARGE&pageNum=1&pageSize=10",
+    "status": "PASS",
+    "details": [
+      "HTTP 200, code: 200"
+    ]
+  },
+  {
+    "name": "API: GET /api/v1/reports/flow",
+    "status": "PASS",
+    "details": [
+      "HTTP 200, code: 200"
+    ]
+  },
+  {
+    "name": "API: GET /api/v1/system/roles?pageNum=1&pageSize=10",
+    "status": "PASS",
+    "details": [
+      "HTTP 200, code: 200"
+    ]
+  },
+  {
+    "name": "API: GET /api/v1/system/roles/list",
+    "status": "PASS",
+    "details": [
+      "HTTP 200, code: 200"
+    ]
+  },
+  {
+    "name": "API: GET /api/v1/system/users?pageNum=1&pageSize=10",
+    "status": "PASS",
+    "details": [
+      "HTTP 200, code: 200"
+    ]
+  }
+]

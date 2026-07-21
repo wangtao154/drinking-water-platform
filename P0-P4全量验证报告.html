@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>直饮水平台 P0-P4 全量验证报告</title>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --accent-green: #22c55e;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --accent-orange: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-cyan: #06b6d4;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 24px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 32px;
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            border-radius: 16px;
+            border: 1px solid #475569;
+        }
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+            background: linear-gradient(90deg, #06b6d4, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .header .subtitle { color: var(--text-secondary); font-size: 14px; }
+        .header .date { color: var(--accent-cyan); font-size: 13px; margin-top: 4px; }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 40px;
+        }
+        .summary-card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid #475569;
+            transition: transform 0.2s;
+        }
+        .summary-card:hover { transform: translateY(-2px); }
+        .summary-card .number {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .summary-card .label { color: var(--text-secondary); font-size: 13px; }
+        .num-green { color: var(--accent-green); }
+        .num-blue { color: var(--accent-blue); }
+        .num-purple { color: var(--accent-purple); }
+        .num-orange { color: var(--accent-orange); }
+        .num-cyan { color: var(--accent-cyan); }
+
+        .section {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 24px;
+            border: 1px solid #475569;
+        }
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .phase-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-p0 { background: rgba(6,182,212,0.15); color: var(--accent-cyan); border: 1px solid rgba(6,182,212,0.3); }
+        .badge-p1 { background: rgba(59,130,246,0.15); color: var(--accent-blue); border: 1px solid rgba(59,130,246,0.3); }
+        .badge-p2 { background: rgba(139,92,246,0.15); color: var(--accent-purple); border: 1px solid rgba(139,92,246,0.3); }
+        .badge-p3 { background: rgba(245,158,11,0.15); color: var(--accent-orange); border: 1px solid rgba(245,158,11,0.3); }
+        .badge-p4 { background: rgba(34,197,94,0.15); color: var(--accent-green); border: 1px solid rgba(34,197,94,0.3); }
+
+        .api-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .api-table th {
+            text-align: left;
+            padding: 10px 14px;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            border-bottom: 2px solid #475569;
+        }
+        .api-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid #334155;
+            font-size: 14px;
+        }
+        .api-table tr:hover { background: rgba(255,255,255,0.03); }
+        .method-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            font-family: monospace;
+        }
+        .method-get { background: rgba(59,130,246,0.2); color: #60a5fa; }
+        .method-post { background: rgba(34,197,94,0.2); color: #4ade80; }
+        .method-put { background: rgba(245,158,11,0.2); color: #fbbf24; }
+        .status-pass {
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+        .status-icon { font-size: 16px; }
+
+        .fix-list { list-style: none; }
+        .fix-list li {
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            background: rgba(239,68,68,0.08);
+            border-left: 3px solid var(--accent-red);
+            border-radius: 8px;
+        }
+        .fix-list .fix-title { font-weight: 600; color: #fca5a5; margin-bottom: 4px; }
+        .fix-list .fix-desc { color: var(--text-secondary); font-size: 13px; }
+        .fix-list .fix-result { color: var(--accent-green); font-size: 13px; margin-top: 4px; }
+
+        .infra-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+        }
+        .infra-item {
+            background: var(--bg-card);
+            border-radius: 10px;
+            padding: 16px;
+            text-align: center;
+            border: 1px solid #475569;
+        }
+        .infra-item .infra-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+        .infra-item .infra-port { color: var(--text-secondary); font-size: 12px; }
+        .infra-item .infra-status {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(34,197,94,0.15);
+            color: var(--accent-green);
+        }
+
+        .footer {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin-top: 24px;
+        }
+        .check-all {
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(135deg, rgba(34,197,94,0.1) 0%, rgba(59,130,246,0.1) 100%);
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+        .check-all .big-text {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--accent-green);
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>直饮水平台 P0-P4 全量验证报告</h1>
+    <div class="subtitle">16 个微服务 | 24 个 Docker 容器 | 37 个 API 端点全量验证</div>
+    <div class="date">验证日期：2026-07-08 | 项目：drinking-water</div>
+</div>
+
+<!-- 总览数据 -->
+<div class="summary-grid">
+    <div class="summary-card">
+        <div class="number num-green">37/37</div>
+        <div class="label">API 端点通过</div>
+    </div>
+    <div class="summary-card">
+        <div class="number num-blue">24</div>
+        <div class="label">Docker 容器健康</div>
+    </div>
+    <div class="summary-card">
+        <div class="number num-purple">16</div>
+        <div class="label">微服务注册 Nacos</div>
+    </div>
+    <div class="summary-card">
+        <div class="number num-orange">36</div>
+        <div class="label">数据库表</div>
+    </div>
+    <div class="summary-card">
+        <div class="number num-cyan">18</div>
+        <div class="label">Maven 模块</div>
+    </div>
+</div>
+
+<!-- 全量通过 -->
+<div class="check-all">
+    <div class="big-text">✅ 全量验证通过 — 37/37 API 端点返回 HTTP 200</div>
+    <div style="color: var(--text-secondary); margin-top: 8px; font-size: 14px;">
+        P1: 8/8 &nbsp;|&nbsp; P2: 6/6 &nbsp;|&nbsp; P3: 8/8 &nbsp;|&nbsp; P4: 15/15
+    </div>
+</div>
+
+<!-- 基础设施 P0 -->
+<div class="section">
+    <div class="section-title">
+        <span class="phase-badge badge-p0">P0</span>
+        基础设施层（8 容器）
+    </div>
+    <div class="infra-grid">
+        <div class="infra-item">
+            <div class="infra-name">MySQL 8.0</div>
+            <div class="infra-port">:3306</div>
+            <div class="infra-status">UP</div>
+        </div>
+        <div class="infra-item">
+            <div class="infra-name">Redis 7</div>
+            <div class="infra-port">:6379</div>
+            <div class="infra-status">UP</div>
+        </div>
+        <div class="infra-item">
+            <div class="infra-name">InfluxDB 2.7</div>
+            <div class="infra-port">:8086</div>
+            <div class="infra-status">UP</div>
+        </div>
+        <div class="infra-item">
+            <div class="infra-name">RabbitMQ 3.12</div>
+            <div class="infra-port">:5672 / :15672</div>
+            <div class="infra-status">UP</div>
+        </div>
+        <div class="infra-item">
+            <div class="infra-name">EMQX 5.3</div>
+            <div class="infra-port">:1883 / :18083</div>
+            <div class="infra-status">UP</div>
+        </div>
+        <div class="infra-item">
+            <div class="infra-name">MinIO</div>
+            <div class="infra-port">:9000 / :9001</div>
+            <div class="infra-status">UP</div>
+        </div>
+        <div class="infra-item">
+            <div class="infra-name">Nacos 2.3</div>
+            <div class="infra-port">:8848 / :9848</div>
+            <div class="infra-status">UP</div>
+        </div>
+        <div class="infra-item">
+            <div class="infra-name">Sentinel</div>
+            <div class="infra-port">:8858</div>
+            <div class="infra-status">UP</div>
+        </div>
+    </div>
+</div>
+
+<!-- P1 API -->
+<div class="section">
+    <div class="section-title">
+        <span class="phase-badge badge-p1">P1</span>
+        核心设备链 — 8/8 ✅
+    </div>
+    <table class="api-table">
+        <thead>
+            <tr><th>方法</th><th>API 路径</th><th>说明</th><th>状态</th></tr>
+        </thead>
+        <tbody>
+            <tr><td><span class="method-badge method-post">POST</span></td><td>/api/v1/auth/login</td><td>账号密码登录（admin/admin123）</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/auth/current-user</td><td>获取当前用户信息</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/dealers</td><td>经销商分页查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/workers</td><td>工人分页查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/customers</td><td>客户分页查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/device-models</td><td>设备型号分页查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/devices</td><td>设备分页查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/iot/devices/TEST001/latest</td><td>IoT 最新遥测数据</td><td class="status-pass">✅ 200</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- P2 API -->
+<div class="section">
+    <div class="section-title">
+        <span class="phase-badge badge-p2">P2</span>
+        滤芯/工单/套餐 — 6/6 ✅
+    </div>
+    <table class="api-table">
+        <thead>
+            <tr><th>方法</th><th>API 路径</th><th>说明</th><th>状态</th></tr>
+        </thead>
+        <tbody>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/filter-models</td><td>滤芯型号分页查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/filters</td><td>滤芯实例分页查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/work-orders</td><td>工单分页查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/work-orders/statistics</td><td>工单统计</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/packages/active</td><td>在售套餐列表</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/packages</td><td>套餐分页查询</td><td class="status-pass">✅ 200</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- P3 API -->
+<div class="section">
+    <div class="section-title">
+        <span class="phase-badge badge-p3">P3</span>
+        订单/支付/财务 — 8/8 ✅
+    </div>
+    <table class="api-table">
+        <thead>
+            <tr><th>方法</th><th>API 路径</th><th>说明</th><th>状态</th></tr>
+        </thead>
+        <tbody>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/orders/statistics</td><td>订单统计（total=3, paid=2, revenue=30000）</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/orders</td><td>订单分页查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/payments</td><td>支付记录分页查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/payments/refunds</td><td>退款记录查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/finance/summary</td><td>财务汇总</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/finance/commissions</td><td>分润记录分页</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/finance/settlements</td><td>结算账单分页</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/finance/invoices</td><td>发票分页查询</td><td class="status-pass">✅ 200</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- P4 API -->
+<div class="section">
+    <div class="section-title">
+        <span class="phase-badge badge-p4">P4</span>
+        库存/监控/报表/系统/推送 — 15/15 ✅
+    </div>
+    <table class="api-table">
+        <thead>
+            <tr><th>方法</th><th>API 路径</th><th>说明</th><th>状态</th></tr>
+        </thead>
+        <tbody>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/inventory/statistics</td><td>库存统计</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/inventory/devices</td><td>设备库存分页</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/inventory/batches</td><td>批次分页查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/monitor/alerts</td><td>告警分页查询</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/monitor/alerts/statistics</td><td>告警统计</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/monitor/thresholds</td><td>告警阈值分页（8 条）</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/reports/dashboard</td><td>仪表盘聚合（11 项指标）</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/reports/devices</td><td>设备报表</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/reports/orders</td><td>订单报表</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/reports/finance</td><td>财务报表</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/reports/workers</td><td>维修工报表</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/system/configs</td><td>系统配置列表（15 条）</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/system/audit-logs</td><td>审计日志分页</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/push/unpushed</td><td>待推送列表</td><td class="status-pass">✅ 200</td></tr>
+            <tr><td><span class="method-badge method-get">GET</span></td><td>/api/v1/push/stats</td><td>推送统计</td><td class="status-pass">✅ 200</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- 本次验证修复 -->
+<div class="section">
+    <div class="section-title">
+        <span style="font-size: 22px;">🔧</span>
+        本次验证发现并修复的 3 个问题
+    </div>
+    <ul class="fix-list">
+        <li>
+            <div class="fix-title">1. device-service 路由不匹配（@GetMapping("/") → @GetMapping）</div>
+            <div class="fix-desc">
+                现象：GET /api/v1/devices 返回 500 NoResourceFoundException<br>
+                原因：Spring MVC 6 中 @GetMapping("/") 不匹配无尾斜杠 URL<br>
+                修复：DeviceController.java 中 @GetMapping("/") → @GetMapping，@PostMapping("/") → @PostMapping<br>
+                重新编译 + 重建 Docker 镜像 + 重新部署
+            </div>
+            <div class="fix-result">✅ 修复后 API 返回 200，容器 healthy</div>
+        </li>
+        <li>
+            <div class="fix-title">2. RabbitMQ 用户丢失（ACCESS_REFUSED）</div>
+            <div class="fix-desc">
+                现象：device-service health 中 rabbit 组件 DOWN，报 ACCESS_REFUSED<br>
+                原因：RabbitMQ 容器重启后 users 列表为空（definitions.json users 数组为空）<br>
+                修复：docker exec rabbitmqctl add_user admin "RabbitMQ@2026" + set_user_tags administrator + set_permissions<br>
+                device-service 重启后 rabbit 组件恢复 UP
+            </div>
+            <div class="fix-result">✅ 修复后 RabbitMQ 认证正常，所有服务健康</div>
+        </li>
+        <li>
+            <div class="fix-title">3. finance-service 缺少 GET /invoices 列表端点</div>
+            <div class="fix-desc">
+                现象：GET /api/v1/finance/invoices 返回 500 HttpRequestMethodNotSupportedException<br>
+                原因：FinanceController 只有 POST /invoices 和 GET /invoices/{invoiceNo}，缺少列表查询<br>
+                修复：FinanceService 新增 invoicePage 方法，FinanceController 新增 @GetMapping("/invoices")<br>
+                编译修复：PageResult.of() 需要 IPage 参数 → 改用 new PageResult<>(total, size, current, records)<br>
+                重新编译 + 重建 Docker 镜像 + 重新部署
+            </div>
+            <div class="fix-result">✅ 修复后 API 返回 200，容器 healthy</div>
+        </li>
+    </ul>
+</div>
+
+<!-- 跨服务集成 -->
+<div class="section">
+    <div class="section-title">
+        <span style="font-size: 22px;">🔗</span>
+        跨服务集成验证
+    </div>
+    <table class="api-table">
+        <thead>
+            <tr><th>验证项</th><th>数据来源</th><th>验证结果</th><th>状态</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>报表服务读取订单数据</td><td>order_info 表</td><td>orders=3, paidOrders=2, revenue=30000</td><td class="status-pass">✅ 通过</td></tr>
+            <tr><td>报表服务读取财务数据</td><td>settlement_bill 表</td><td>pendingSettlements=1</td><td class="status-pass">✅ 通过</td></tr>
+            <tr><td>报表服务读取人员数据</td><td>dealer/worker 表</td><td>workers=1, dealers=1</td><td class="status-pass">✅ 通过</td></tr>
+            <tr><td>系统服务读取配置</td><td>sys_config 表</td><td>15 条配置全部读取</td><td class="status-pass">✅ 通过</td></tr>
+            <tr><td>监控服务读取阈值</td><td>alert_threshold 表</td><td>8 条阈值全部读取</td><td class="status-pass">✅ 通过</td></tr>
+            <tr><td>推送服务读取告警</td><td>device_alert 表</td><td>未推送告警查询正常</td><td class="status-pass">✅ 通过</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="footer">
+    直饮水平台 P0-P4 全量验证完成 | 16 微服务 / 24 容器 / 37 API 端点全部通过<br>
+    生成时间：2026-07-08 | Docker Compose 项目：drinking-water
+</div>
+
+</body>
+</html>

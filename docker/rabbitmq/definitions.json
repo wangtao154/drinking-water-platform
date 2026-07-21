@@ -1,0 +1,207 @@
+{
+  "rabbit_version": "3.12.0",
+  "users": [
+    {
+      "name": "admin",
+      "password_hash": "89z2fiEfg5HU8KsGo4ugMTkynoDG2Z34SyF+XWZZiHYuPzus",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": [
+        "administrator"
+      ]
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "admin",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "device.exchange",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "order.exchange",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "alert.exchange",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "workorder.exchange",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "filter.exchange",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "notify.exchange",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "device.activated.queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "alert.check.queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "alert.notify.queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "filter.life.check.queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "order.paid.queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "work_order.new.queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "work_order.completed.queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "settlement.done.queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "device.exchange",
+      "vhost": "/",
+      "destination": "device.activated.queue",
+      "destination_type": "queue",
+      "routing_key": "device.activated",
+      "arguments": {}
+    },
+    {
+      "source": "alert.exchange",
+      "vhost": "/",
+      "destination": "alert.check.queue",
+      "destination_type": "queue",
+      "routing_key": "alert.check",
+      "arguments": {}
+    },
+    {
+      "source": "alert.exchange",
+      "vhost": "/",
+      "destination": "alert.notify.queue",
+      "destination_type": "queue",
+      "routing_key": "alert.notify",
+      "arguments": {}
+    },
+    {
+      "source": "filter.exchange",
+      "vhost": "/",
+      "destination": "filter.life.check.queue",
+      "destination_type": "queue",
+      "routing_key": "filter.life.check",
+      "arguments": {}
+    },
+    {
+      "source": "order.exchange",
+      "vhost": "/",
+      "destination": "order.paid.queue",
+      "destination_type": "queue",
+      "routing_key": "order.paid",
+      "arguments": {}
+    },
+    {
+      "source": "workorder.exchange",
+      "vhost": "/",
+      "destination": "work_order.new.queue",
+      "destination_type": "queue",
+      "routing_key": "work_order.new",
+      "arguments": {}
+    },
+    {
+      "source": "workorder.exchange",
+      "vhost": "/",
+      "destination": "work_order.completed.queue",
+      "destination_type": "queue",
+      "routing_key": "work_order.completed",
+      "arguments": {}
+    },
+    {
+      "source": "notify.exchange",
+      "vhost": "/",
+      "destination": "settlement.done.queue",
+      "destination_type": "queue",
+      "routing_key": "settlement.done",
+      "arguments": {}
+    }
+  ]
+}

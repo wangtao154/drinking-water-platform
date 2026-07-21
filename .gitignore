@@ -1,0 +1,77 @@
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.project
+.classpath
+.settings/
+
+# Build
+target/
+build/
+dist/
+*.jar
+*.war
+*.ear
+*.class
+*.original
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Test scripts (root level)
+test-*.js
+test-*.mjs
+test-*.py
+test-*.json
+test-*.html
+
+# Docker data
+docker/data/
+docker/zoneinfo/
+
+# Maven local repo
+.m2/
+
+# WorkBuddy
+.workbuddy/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Logs
+*.log
+logs/
+
+# Screenshots & generated files
+p5-screenshots/
+outputs/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+
+# Documents (large binary)
+*.docx
+*.pdf
+
+# Misc
+nul
+fetch_reference*.js
+screenshot-report.js

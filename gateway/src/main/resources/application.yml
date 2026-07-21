@@ -1,0 +1,167 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_HOST:dw-nacos:8848}
+        username: nacos
+        password: nacos
+
+    gateway:
+      # 路由配置（服务发现自动路由 + 手动路由）
+      routes:
+        # ---- auth-service ----
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/v1/auth/**
+          filters:
+            - StripPrefix=0
+
+        # ---- device-service ----
+        - id: device-service
+          uri: lb://device-service
+          predicates:
+            - Path=/api/v1/devices/**,/api/v1/device-models/**
+          filters:
+            - StripPrefix=0
+
+        # ---- user-service ----
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/v1/customers/**,/api/v1/dealers/**,/api/v1/workers/**,/api/v1/sys-users/**,/api/v1/applications/**,/api/v1/wechat/official/**
+          filters:
+            - StripPrefix=0
+
+        # ---- iot-service ----
+        - id: iot-service
+          uri: lb://iot-service
+          predicates:
+            - Path=/api/v1/iot/**
+          filters:
+            - StripPrefix=0
+
+        # ---- filter-service (P2) ----
+        - id: filter-service
+          uri: lb://filter-service
+          predicates:
+            - Path=/api/v1/filters/**,/api/v1/filter-models/**
+          filters:
+            - StripPrefix=0
+
+        # ---- worker-order-service (P2) ----
+        - id: worker-order-service
+          uri: lb://worker-order-service
+          predicates:
+            - Path=/api/v1/work-orders/**
+          filters:
+            - StripPrefix=0
+
+        # ---- order-service (P3) ----
+        - id: order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/api/v1/orders/**
+          filters:
+            - StripPrefix=0
+
+        # ---- payment-service (P3) ----
+        - id: payment-service
+          uri: lb://payment-service
+          predicates:
+            - Path=/api/v1/payments/**
+          filters:
+            - StripPrefix=0
+
+        # ---- finance-service (P3) ----
+        - id: finance-service
+          uri: lb://finance-service
+          predicates:
+            - Path=/api/v1/finance/**
+          filters:
+            - StripPrefix=0
+
+        # ---- package-service (P2) ----
+        - id: package-service
+          uri: lb://package-service
+          predicates:
+            - Path=/api/v1/packages/**
+          filters:
+            - StripPrefix=0
+
+        # ---- system-service (P4) ----
+        - id: system-service
+          uri: lb://system-service
+          predicates:
+            - Path=/api/v1/system/**
+          filters:
+            - StripPrefix=0
+
+        # ---- monitor-service (P4) ----
+        - id: monitor-service
+          uri: lb://monitor-service
+          predicates:
+            - Path=/api/v1/monitor/**,/api/v1/alerts/**
+          filters:
+            - StripPrefix=0
+
+        # ---- report-service (P4) ----
+        - id: report-service
+          uri: lb://report-service
+          predicates:
+            - Path=/api/v1/reports/**
+          filters:
+            - StripPrefix=0
+
+        # ---- inventory-service (P4) ----
+        - id: inventory-service
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/v1/inventory/**,/api/v1/stocks/**
+          filters:
+            - StripPrefix=0
+
+        # ---- push-service (P4) ----
+        - id: push-service
+          uri: lb://push-service
+          predicates:
+            - Path=/api/v1/push/**
+          filters:
+            - StripPrefix=0
+
+      # 跨域
+      default-filters: []
+
+  # Redis
+  data:
+    redis:
+      host: ${REDIS_HOST:dw-redis}
+      port: 6379
+      password: ${REDIS_PASSWORD:Redis@2026}
+      database: 1
+
+# JWT
+jwt:
+  secret: ${JWT_SECRET:drinking-water-platform-jwt-secret-key-please-change-in-production-2026}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+# Logging
+logging:
+  level:
+    com.platform.gateway: info
+    org.springframework.cloud.gateway: info

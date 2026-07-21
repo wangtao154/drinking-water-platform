@@ -1,0 +1,109 @@
+server:
+  port: 8089
+
+spring:
+  application:
+    name: worker-order-service
+
+  config:
+    import:
+      - optional:nacos:${spring.application.name}.yml
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_HOST:dw-nacos:8848}
+        username: nacos
+        password: nacos
+      config:
+        server-addr: ${NACOS_HOST:dw-nacos:8848}
+        username: nacos
+        password: nacos
+        file-extension: yml
+
+  # MySQL
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:dw-mysql:3306}/${MYSQL_DATABASE:drinking_water}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    password: ${MYSQL_ROOT_PASSWORD:DrinkingWater@2026}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+
+  # Redis
+  data:
+    redis:
+      host: ${REDIS_HOST:dw-redis}
+      port: 6379
+      password: ${REDIS_PASSWORD:Redis@2026}
+      database: 0
+      timeout: 5000
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+  # RabbitMQ
+  rabbitmq:
+    host: ${RABBITMQ_HOST:dw-rabbitmq}
+    port: 5672
+    username: ${RABBITMQ_USER:admin}
+    password: ${RABBITMQ_PASSWORD:RabbitMQ@2026}
+    virtual-host: /
+
+  # JSON
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+
+  # 文件上传
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
+
+# MyBatis-Plus
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# JWT
+jwt:
+  secret: ${JWT_SECRET:drinking-water-platform-jwt-secret-key-please-change-in-production-2026}
+  access-expire: 7200
+  refresh-expire: 604800
+
+# MinIO
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://dw-minio:9000}
+  access-key: ${MINIO_ROOT_USER:admin}
+  secret-key: ${MINIO_ROOT_PASSWORD:MinIO@2026}
+  bucket: ${MINIO_BUCKET:drinking-water}
+  # 外部访问URL（小程序/浏览器访问图片用）
+  external-endpoint: ${MINIO_EXTERNAL_ENDPOINT:http://192.168.21.2:9000}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+# Logging
+logging:
+  level:
+    com.platform.workorder: info
+    org.springframework.web: info

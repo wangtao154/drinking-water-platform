@@ -1,0 +1,21 @@
+# InfluxDB 2.x 配置
+
+# 数据目录
+bolt-path: /var/lib/influxdb2/influxd.bolt
+engine-path: /var/lib/influxdb2/engine
+
+# HTTP 绑定
+http-bind-address: ":8086"
+
+# 日志级别
+log-level: info
+
+# 并发查询
+query-concurrency: 10
+
+# 自动降采样任务保留策略
+# 30天原始数据 → 1小时聚合保留365天 → 1天聚合保留3年
+# 具体降采样 CQ 在 init.sql 中通过 InfluxDB Task API 创建
+
+# Flux 查询超时
+flux-log-enabled: false

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>直饮水平台 - 全量功能测试报告</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #303133; padding: 24px; }
+  .container { max-width: 1000px; margin: 0 auto; }
+  .header { text-align: center; margin-bottom: 32px; }
+  .header h1 { font-size: 28px; color: #303133; margin-bottom: 8px; }
+  .header .subtitle { color: #909399; font-size: 14px; }
+  .header .date { color: #c0c4cc; font-size: 13px; margin-top: 4px; }
+  
+  .summary-bar { display: flex; gap: 16px; margin-bottom: 32px; }
+  .summary-card { flex: 1; background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-align: center; }
+  .summary-card .number { font-size: 36px; font-weight: 700; }
+  .summary-card .label { font-size: 13px; color: #909399; margin-top: 4px; }
+  .summary-card.pass .number { color: #67c23a; }
+  .summary-card.fail .number { color: #f56c6c; }
+  .summary-card.rate .number { color: #409eff; }
+  .summary-card.modules .number { color: #e6a23c; }
+  
+  .section { background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+  .section h2 { font-size: 18px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #ebeef5; }
+  
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { background: #f5f7fa; padding: 12px 16px; text-align: left; font-weight: 600; color: #606266; border-bottom: 2px solid #ebeef5; }
+  td { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafafa; }
+  
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+  .badge.pass { background: #f0f9eb; color: #67c23a; }
+  .badge.fail { background: #fef0f0; color: #f56c6c; }
+  .badge.warn { background: #fdf6ec; color: #e6a23c; }
+  
+  .fix-item { padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+  .fix-item:last-child { border-bottom: none; }
+  .fix-item .title { font-weight: 600; color: #303133; margin-bottom: 4px; }
+  .fix-item .desc { color: #606266; font-size: 13px; line-height: 1.6; }
+  .fix-item .tag { display: inline-block; padding: 1px 8px; border-radius: 3px; font-size: 11px; margin-right: 8px; }
+  .tag.backend { background: #ecf5ff; color: #409eff; }
+  .tag.frontend { background: #f0f9eb; color: #67c23a; }
+  .tag.config { background: #fdf6ec; color: #e6a23c; }
+  
+  .progress-bar { width: 100%; height: 8px; background: #ebeef5; border-radius: 4px; overflow: hidden; margin-top: 4px; }
+  .progress-bar .fill { height: 100%; background: #67c23a; border-radius: 4px; transition: width 0.3s; }
+  
+  .footer { text-align: center; margin-top: 32px; padding: 16px; color: #c0c4cc; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>直饮水平台全量功能测试报告</h1>
+    <div class="subtitle">16 个微服务 + Vue 3 管理后台 · 59 项 API 测试 · 9 项前端页面验证</div>
+    <div class="date">测试时间：2026-07-09 09:36 | 环境：Docker Compose (24 容器)</div>
+  </div>
+
+  <div class="summary-bar">
+    <div class="summary-card pass">
+      <div class="number">59</div>
+      <div class="label">API 测试通过</div>
+    </div>
+    <div class="summary-card fail">
+      <div class="number">0</div>
+      <div class="label">API 测试失败</div>
+    </div>
+    <div class="summary-card rate">
+      <div class="number">100%</div>
+      <div class="label">通过率</div>
+    </div>
+    <div class="summary-card modules">
+      <div class="number">16</div>
+      <div class="label">测试模块</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>各模块测试结果</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:40px">#</th>
+          <th>模块</th>
+          <th style="width:100px">测试项数</th>
+          <th style="width:100px">通过</th>
+          <th style="width:100px">失败</th>
+          <th style="width:120px">通过率</th>
+          <th style="width:80px">状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>0</td><td>认证服务 (Auth)</td><td>1</td><td>1</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>1</td><td>系统管理 (角色/账户/审计/配置)</td><td>14</td><td>14</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>2</td><td>设备管理 (设备/型号 CRUD)</td><td>6</td><td>6</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>3</td><td>滤芯管理 (列表/登记)</td><td>2</td><td>2</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>4</td><td>客户管理 (CRUD)</td><td>3</td><td>3</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>5</td><td>经销商管理 (CRUD)</td><td>3</td><td>3</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>6</td><td>运维人员 (CRUD)</td><td>4</td><td>4</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>7</td><td>工单管理 (CRUD)</td><td>3</td><td>3</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>8</td><td>套餐管理 (CRUD)</td><td>5</td><td>5</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>9</td><td>订单管理 (列表/充值记录)</td><td>2</td><td>2</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>10</td><td>财务管理 (发票/分润/结算/汇总)</td><td>6</td><td>6</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>11</td><td>库存管理 (设备/统计/批次)</td><td>3</td><td>3</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>12</td><td>监控预警 (告警列表)</td><td>1</td><td>1</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>13</td><td>报表中心 (仪表盘/流量/设备/订单/财务/运维)</td><td>6</td><td>6</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>14</td><td>推送服务 (未推送/统计)</td><td>2</td><td>2</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+        <tr><td>15</td><td>IoT 服务 (遥测/在线状态)</td><td>2</td><td>2</td><td>0</td><td><div class="progress-bar"><div class="fill" style="width:100%"></div></div></td><td><span class="badge pass">PASS</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>本次测试修复的问题</h2>
+    
+    <div class="fix-item">
+      <div class="title"><span class="tag backend">后端</span>工单 DELETE 端点缺失</div>
+      <div class="desc">
+        <strong>问题：</strong>WorkOrderController 完全没有 @DeleteMapping 端点，DELETE 请求返回 500 服务器内部错误。<br>
+        <strong>修复：</strong>在 WorkOrderService 接口、WorkOrderServiceImpl、WorkOrderController 三层添加 delete(Long id) 方法，使用 MyBatis-Plus 逻辑删除（@TableLogic）。
+      </div>
+    </div>
+    
+    <div class="fix-item">
+      <div class="title"><span class="tag backend">后端</span>客户/经销商/运维人员 DELETE 端点缺失</div>
+      <div class="desc">
+        <strong>问题：</strong>CustomerController、DealerController、WorkerController 均无 @DeleteMapping 端点。<br>
+        <strong>修复：</strong>三个 Controller + Service + ServiceImpl 均添加 delete(Long id) 方法，包含存在性校验和逻辑删除。
+      </div>
+    </div>
+    
+    <div class="fix-item">
+      <div class="title"><span class="tag backend">后端</span>账户更新密码必填校验错误</div>
+      <div class="desc">
+        <strong>问题：</strong>AccountCreateDTO 的 password 字段有 @NotBlank 注解，导致 PUT 更新账户时密码必填，返回 500。<br>
+        <strong>修复：</strong>新建 AccountUpdateDTO（无 @NotBlank），更新接口改用此 DTO。
+      </div>
+    </div>
+    
+    <div class="fix-item">
+      <div class="title"><span class="tag config">配置</span>Long → String 序列化未生效</div>
+      <div class="desc">
+        <strong>问题：</strong>JacksonConfig 注释写了"Long → String"但实际未实现。雪花算法 ID（19位）超过 JS 安全整数范围，导致前端收到的 ID 精度丢失。<br>
+        <strong>修复：</strong>添加 SimpleModule + ToStringSerializer，所有 Long 字段序列化为 String。修改后需重新 mvn install + Docker 重建。
+      </div>
+    </div>
+    
+    <div class="fix-item">
+      <div class="title"><span class="tag frontend">前端</span>工单列表页缺少删除按钮</div>
+      <div class="desc">
+        <strong>问题：</strong>workOrder/list.vue 操作列只有"查看详情"和"派单"，无删除功能。<br>
+        <strong>修复：</strong>api/workOrder.ts 添加 deleteWorkOrder 函数，list.vue 添加 el-popconfirm 删除按钮和 handleDelete 方法。
+      </div>
+    </div>
+    
+    <div class="fix-item">
+      <div class="title"><span class="tag frontend">前端</span>套餐列表页缺少删除按钮</div>
+      <div class="desc">
+        <strong>问题：</strong>package/list.vue 操作列只有"编辑"、"上架"、"下架"，无删除功能。<br>
+        <strong>修复：</strong>api/package.ts 添加 deletePackage 函数，list.vue 添加 el-popconfirm 删除按钮和 handleDelete 方法。
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>前端页面删除功能完整性</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>页面</th>
+          <th>路由</th>
+          <th>删除按钮</th>
+          <th>API 调用</th>
+          <th>后端端点</th>
+          <th>状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>客户管理</td><td>/customers</td><td>有 (el-popconfirm)</td><td>deleteCustomer</td><td>DELETE /customers/{id}</td><td><span class="badge pass">完整</span></td></tr>
+        <tr><td>经销商管理</td><td>/dealers</td><td>有 (el-popconfirm)</td><td>deleteDealer</td><td>DELETE /dealers/{id}</td><td><span class="badge pass">完整</span></td></tr>
+        <tr><td>运维人员</td><td>/workers</td><td>有 (el-popconfirm)</td><td>deleteWorker</td><td>DELETE /workers/{id}</td><td><span class="badge pass">完整</span></td></tr>
+        <tr><td>工单管理</td><td>/work-orders</td><td>有 (el-popconfirm) <span class="badge warn">新增</span></td><td>deleteWorkOrder</td><td>DELETE /work-orders/{id}</td><td><span class="badge pass">完整</span></td></tr>
+        <tr><td>设备型号</td><td>/devices/models</td><td>有 (el-popconfirm)</td><td>deleteDeviceModel</td><td>DELETE /device-models/{id}</td><td><span class="badge pass">完整</span></td></tr>
+        <tr><td>套餐管理</td><td>/packages</td><td>有 (el-popconfirm) <span class="badge warn">新增</span></td><td>deletePackage</td><td>DELETE /packages/{id}</td><td><span class="badge pass">完整</span></td></tr>
+        <tr><td>角色管理</td><td>/system/roles</td><td>有 (el-popconfirm)</td><td>deleteRole</td><td>DELETE /system/roles/{id}</td><td><span class="badge pass">完整</span></td></tr>
+        <tr><td>账户管理</td><td>/system/users</td><td>有 (el-popconfirm)</td><td>deleteUser</td><td>DELETE /system/users/{id}</td><td><span class="badge pass">完整</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>测试覆盖范围</h2>
+    <table>
+      <thead>
+        <tr><th>类别</th><th>覆盖项</th><th>数量</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>认证</td><td>管理员登录、Token 获取</td><td>1</td></tr>
+        <tr><td>系统管理</td><td>角色 CRUD、账户 CRUD、密码重置、审计日志、系统配置、ID序列化验证</td><td>14</td></tr>
+        <tr><td>设备管理</td><td>设备列表、设备型号 CRUD</td><td>6</td></tr>
+        <tr><td>滤芯管理</td><td>滤芯列表、滤芯登记</td><td>2</td></tr>
+        <tr><td>客户管理</td><td>客户列表、创建、删除</td><td>3</td></tr>
+        <tr><td>经销商管理</td><td>经销商列表、创建、删除</td><td>3</td></tr>
+        <tr><td>运维人员</td><td>运维人员列表、创建、删除</td><td>4</td></tr>
+        <tr><td>工单管理</td><td>工单列表、创建、删除</td><td>3</td></tr>
+        <tr><td>套餐管理</td><td>套餐列表、ID序列化、创建、修改、删除</td><td>5</td></tr>
+        <tr><td>订单管理</td><td>订单列表、充值记录</td><td>2</td></tr>
+        <tr><td>财务管理</td><td>发票列表/创建、分润、结算、汇总</td><td>6</td></tr>
+        <tr><td>库存管理</td><td>设备库存、统计、批次</td><td>3</td></tr>
+        <tr><td>监控预警</td><td>告警列表</td><td>1</td></tr>
+        <tr><td>报表中心</td><td>仪表盘、流量报表、设备/订单/财务/运维报表</td><td>6</td></tr>
+        <tr><td>推送服务</td><td>未推送告警、推送统计</td><td>2</td></tr>
+        <tr><td>IoT 服务</td><td>设备遥测、在线状态</td><td>2</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>修改的文件清单</h2>
+    <table>
+      <thead>
+        <tr><th>文件</th><th>修改类型</th><th>说明</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>platform-common/.../JacksonConfig.java</td><td>修改</td><td>添加 Long→String 序列化</td></tr>
+        <tr><td>system-service/.../AccountUpdateDTO.java</td><td>新增</td><td>账户更新 DTO（密码非必填）</td></tr>
+        <tr><td>system-service/.../SystemController.java</td><td>修改</td><td>更新接口改用 AccountUpdateDTO</td></tr>
+        <tr><td>system-service/.../SystemService.java</td><td>修改</td><td>更新方法签名</td></tr>
+        <tr><td>system-service/.../SystemServiceImpl.java</td><td>修改</td><td>更新方法实现</td></tr>
+        <tr><td>user-service/.../CustomerController.java</td><td>修改</td><td>添加 DELETE 端点</td></tr>
+        <tr><td>user-service/.../CustomerService.java</td><td>修改</td><td>添加 delete 方法</td></tr>
+        <tr><td>user-service/.../CustomerServiceImpl.java</td><td>修改</td><td>添加 delete 实现</td></tr>
+        <tr><td>user-service/.../DealerController.java</td><td>修改</td><td>添加 DELETE 端点</td></tr>
+        <tr><td>user-service/.../DealerService.java</td><td>修改</td><td>添加 delete 方法</td></tr>
+        <tr><td>user-service/.../DealerServiceImpl.java</td><td>修改</td><td>添加 delete 实现</td></tr>
+        <tr><td>user-service/.../WorkerController.java</td><td>修改</td><td>添加 DELETE 端点</td></tr>
+        <tr><td>user-service/.../WorkerService.java</td><td>修改</td><td>添加 delete 方法</td></tr>
+        <tr><td>user-service/.../WorkerServiceImpl.java</td><td>修改</td><td>添加 delete 实现</td></tr>
+        <tr><td>worker-order-service/.../WorkOrderController.java</td><td>修改</td><td>添加 DELETE 端点</td></tr>
+        <tr><td>worker-order-service/.../WorkOrderService.java</td><td>修改</td><td>添加 delete 方法</td></tr>
+        <tr><td>worker-order-service/.../WorkOrderServiceImpl.java</td><td>修改</td><td>添加 delete 实现</td></tr>
+        <tr><td>admin-web/src/api/workOrder.ts</td><td>修改</td><td>添加 deleteWorkOrder 函数</td></tr>
+        <tr><td>admin-web/src/api/package.ts</td><td>修改</td><td>添加 deletePackage 函数</td></tr>
+        <tr><td>admin-web/src/views/workOrder/list.vue</td><td>修改</td><td>添加删除按钮 + handleDelete</td></tr>
+        <tr><td>admin-web/src/views/package/list.vue</td><td>修改</td><td>添加删除按钮 + handleDelete</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="footer">
+    直饮水平台 · 全量功能测试报告 · 2026-07-09<br>
+    16 个微服务 + Vue 3 管理后台 · 59 项 API 测试全部通过 · 8 个 CRUD 页面删除功能完整
+  </div>
+</div>
+</body>
+</html>
