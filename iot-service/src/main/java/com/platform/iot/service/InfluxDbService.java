@@ -33,7 +33,7 @@ public class InfluxDbService {
     private String influxBucket;
 
     private static final Set<String> ALLOWED_HISTORY_INTERVALS = Set.of(
-            "10s", "30s", "1m", "5m", "10m", "30m", "1h", "6h", "12h", "1d"
+            "1s", "10s", "30s", "1m", "5m", "10m", "30m", "1h", "6h", "12h", "1d"
     );
 
     public void writeTelemetry(String sn, Map<String, Object> points, Map<String, String> tags) {

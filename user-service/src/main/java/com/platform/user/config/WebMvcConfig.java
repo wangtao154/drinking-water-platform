@@ -22,6 +22,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .excludePathPatterns(
                         "/actuator/**",
                         "/api/v1/wechat/official/callback",
+                        "/api/v1/wechat/official/events",
                         "/error"
                 );
     }

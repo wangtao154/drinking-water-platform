@@ -10,4 +10,8 @@ public interface WechatOfficialBindingService {
     OfficialAccountBindStatusVO getBindStatus(Long workerId);
 
     void handleCallback(String code, String state);
+
+    String verifyEventCallback(String signature, String timestamp, String nonce, String echostr);
+
+    void handleEventCallback(String signature, String timestamp, String nonce, String body);
 }

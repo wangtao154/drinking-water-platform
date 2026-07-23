@@ -162,6 +162,7 @@
               @change="loadHistory"
             >
               <el-option label="自动间隔" value="auto" />
+              <el-option label="1秒" value="1s" />
               <el-option label="10秒" value="10s" />
               <el-option label="30秒" value="30s" />
               <el-option label="1分钟" value="1m" />
@@ -203,6 +204,25 @@
 
       <div v-loading="historyLoading" class="chart-container">
         <div ref="historyChartRef" style="width: 100%; height: 420px"></div>
+        <div
+          v-for="tip in pinnedHistoryTooltips"
+          :key="tip.key"
+          class="history-pinned-tooltip"
+          :style="{ left: tip.left + 'px', top: tip.top + 'px' }"
+        >
+          <div class="pinned-header">
+            <span class="pinned-badge">已固定</span>
+            <span class="pinned-time">{{ tip.timeLabel }}</span>
+            <button type="button" class="pinned-remove" @click.stop="removePinnedHistoryTooltip(tip.key)">
+              取消固定
+            </button>
+          </div>
+          <div v-for="item in tip.values" :key="item.seriesName" class="pinned-row">
+            <span class="pinned-marker" :style="{ backgroundColor: item.color }"></span>
+            <span class="pinned-name">{{ item.seriesName }}:</span>
+            <strong>{{ item.value.toFixed(2) }}</strong>
+          </div>
+        </div>
         <el-empty v-if="!historyLoading && !hasHistoryData" description="暂无历史数据，请确认设备已上报数据到 InfluxDB" />
       </div>
     </el-card>
@@ -350,6 +370,25 @@ const historyRange = ref('24h')
 const historyInterval = ref('auto')
 const selectedFields = ref<string[]>(['P1', 'P2', 'P7', 'P17'])
 const hasHistoryData = ref(false)
+const HISTORY_CHART_COLORS = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc']
+type HistoryChartSeriesSnapshot = {
+  name: string
+  data: (number | null)[]
+  color: string
+}
+type HistoryPinnedTooltip = {
+  key: string
+  dataIndex: number
+  axisValue: string | number
+  anchorValue: number
+  timeLabel: string
+  left: number
+  top: number
+  values: { seriesName: string; value: number; color: string }[]
+}
+const pinnedHistoryTooltips = ref<HistoryPinnedTooltip[]>([])
+let currentHistoryTimes: string[] = []
+let currentHistorySeries: HistoryChartSeriesSnapshot[] = []
 
 // 可绘图测点分组（仅数值型、有趋势意义的测点）
 const chartableGroups = computed(() => {
@@ -588,6 +627,7 @@ async function loadHistory() {
     return
   }
 
+  clearPinnedHistoryTooltips(false)
   historyLoading.value = true
   try {
     const res = await getHistoryTelemetry(device.sn, {
@@ -614,6 +654,86 @@ async function loadHistory() {
   }
 }
 
+function handleHistoryChartClick(params: any) {
+  if (params?.componentType !== 'series' || typeof params.dataIndex !== 'number') return
+
+  const axisValue = params.name ?? params.axisValue ?? currentHistoryTimes[params.dataIndex] ?? ''
+  const key = getPinnedHistoryTooltipKey(params.dataIndex, axisValue)
+  if (pinnedHistoryTooltips.value.some(item => item.key === key)) return
+
+  const anchorValue = typeof params.value === 'number' ? params.value : getFirstHistoryValue(params.dataIndex)
+  pinnedHistoryTooltips.value.push(createPinnedHistoryTooltip(params.dataIndex, axisValue, anchorValue))
+}
+
+function removePinnedHistoryTooltip(key: string) {
+  pinnedHistoryTooltips.value = pinnedHistoryTooltips.value.filter(item => item.key !== key)
+}
+
+function getPinnedHistoryTooltipKey(dataIndex: number, axisValue: string | number) {
+  return `${dataIndex}:${String(axisValue)}`
+}
+
+function getFirstHistoryValue(dataIndex: number) {
+  for (const s of currentHistorySeries) {
+    const value = s.data[dataIndex]
+    if (typeof value === 'number') return value
+  }
+  return 0
+}
+
+function createPinnedHistoryTooltip(dataIndex: number, axisValue: string | number, anchorValue: number): HistoryPinnedTooltip {
+  const key = getPinnedHistoryTooltipKey(dataIndex, axisValue)
+  const values = currentHistorySeries
+    .map(s => ({ seriesName: s.name, value: s.data[dataIndex], color: s.color }))
+    .filter((item): item is { seriesName: string; value: number; color: string } => typeof item.value === 'number')
+
+  return {
+    key,
+    dataIndex,
+    axisValue,
+    anchorValue,
+    timeLabel: formatHistoryTime(axisValue, true),
+    values,
+    ...calculatePinnedHistoryTooltipPosition(axisValue, anchorValue),
+  }
+}
+
+function calculatePinnedHistoryTooltipPosition(axisValue: string | number, anchorValue: number) {
+  if (!historyChart) return { left: 8, top: 8 }
+  const pixel = historyChart.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [axisValue, anchorValue]) as number[]
+  const chartDom = historyChart.getDom()
+  const maxLeft = Math.max(chartDom.clientWidth - 260, 8)
+  const maxTop = Math.max(chartDom.clientHeight - 150, 8)
+  const left = Math.min(Math.max((pixel?.[0] ?? 0) + 12, 8), maxLeft)
+  const top = Math.min(Math.max((pixel?.[1] ?? 0) - 24, 8), maxTop)
+  return { left, top }
+}
+
+function updatePinnedHistoryTooltipPositions() {
+  if (!historyChart || pinnedHistoryTooltips.value.length === 0) return
+  pinnedHistoryTooltips.value = pinnedHistoryTooltips.value.map(item => ({
+    ...item,
+    ...calculatePinnedHistoryTooltipPosition(item.axisValue, item.anchorValue),
+  }))
+}
+
+function clearPinnedHistoryTooltips(hide = true) {
+  pinnedHistoryTooltips.value = []
+  if (hide && historyChart) {
+    historyChart.dispatchAction({ type: 'hideTip' })
+  }
+}
+
+function handleHistoryChartViewChanged() {
+  updatePinnedHistoryTooltipPositions()
+}
+
+function handleHistoryResize() {
+  if (!historyChart) return
+  historyChart.resize()
+  updatePinnedHistoryTooltipPositions()
+}
+
 /** 使用 ECharts 渲染历史数据曲线图 */
 function renderHistoryChart(series: any[], interval: string) {
   if (!historyChartRef.value) return
@@ -621,6 +741,10 @@ function renderHistoryChart(series: any[], interval: string) {
   if (!historyChart) {
     historyChart = echarts.init(historyChartRef.value)
   }
+  historyChart.off('click', handleHistoryChartClick)
+  historyChart.on('click', handleHistoryChartClick)
+  historyChart.off('datazoom', handleHistoryChartViewChanged)
+  historyChart.on('datazoom', handleHistoryChartViewChanged)
 
   // 收集所有时间戳（取并集）
   const allTimes = new Set<string>()
@@ -632,9 +756,10 @@ function renderHistoryChart(series: any[], interval: string) {
   const sortedTimes = Array.from(allTimes).sort()
 
   // 为每条曲线构建数据（以索引对齐时间轴）
-  const chartSeries = series.map(s => {
+  const chartSeries = series.map((s, index) => {
     const info = getPointInfo(s.field)
     const label = info.name + (info.unit ? ` (${info.unit})` : '')
+    const color = HISTORY_CHART_COLORS[index % HISTORY_CHART_COLORS.length]
     // 创建 time→value 映射
     const valueMap = new Map<string, number>()
     for (const point of s.data) {
@@ -654,8 +779,16 @@ function renderHistoryChart(series: any[], interval: string) {
       symbolSize: 4,
       showSymbol: false,
       connectNulls: false,
+      itemStyle: { color },
+      lineStyle: { color },
     }
   })
+  currentHistoryTimes = sortedTimes
+  currentHistorySeries = chartSeries.map(s => ({
+    name: s.name,
+    data: s.data,
+    color: s.itemStyle.color,
+  }))
 
   const rangeLabels: Record<string, string> = {
     '1h': '近1小时',
@@ -673,6 +806,9 @@ function renderHistoryChart(series: any[], interval: string) {
     },
     tooltip: {
       trigger: 'axis',
+      triggerOn: 'mousemove',
+      alwaysShowContent: false,
+      confine: true,
       axisPointer: { type: 'cross' },
       formatter: (params: any) => {
         if (!params || params.length === 0) return ''
@@ -730,14 +866,18 @@ function renderHistoryChart(series: any[], interval: string) {
 }
 
 onMounted(() => {
+  window.addEventListener('resize', handleHistoryResize)
   loadDevice()
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleHistoryResize)
   if (refreshTimer) {
     clearInterval(refreshTimer)
   }
   if (historyChart) {
+    historyChart.off('click', handleHistoryChartClick)
+    historyChart.off('datazoom', handleHistoryChartViewChanged)
     historyChart.dispose()
     historyChart = null
   }
@@ -898,6 +1038,93 @@ onUnmounted(() => {
     .chart-container {
       position: relative;
       min-height: 420px;
+
+      .history-pinned-tooltip {
+        position: absolute;
+        z-index: 5;
+        width: 320px;
+        max-height: 180px;
+        overflow: auto;
+        padding: 10px 12px;
+        border: 1px solid #dcdfe6;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+        pointer-events: auto;
+
+        .pinned-header {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 6px;
+          min-height: 24px;
+
+          .pinned-badge {
+            flex: 0 0 auto;
+            padding: 0 5px;
+            border-radius: 3px;
+            background: #ecf5ff;
+            color: #409eff;
+            font-size: 12px;
+            line-height: 20px;
+          }
+
+          .pinned-time {
+            flex: 1 1 170px;
+            white-space: nowrap;
+            color: #606266;
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 20px;
+          }
+
+          .pinned-remove {
+            flex: 0 0 auto;
+            margin-left: auto;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: #f56c6c;
+            font-size: 12px;
+            line-height: 20px;
+            cursor: pointer;
+
+            &:hover {
+              color: #d93026;
+              text-decoration: underline;
+            }
+          }
+        }
+
+        .pinned-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          min-height: 22px;
+          color: #606266;
+          font-size: 13px;
+          line-height: 20px;
+          white-space: nowrap;
+
+          .pinned-marker {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex: 0 0 auto;
+          }
+
+          .pinned-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+
+          strong {
+            color: #303133;
+            margin-left: auto;
+          }
+        }
+      }
 
       .el-empty {
         position: absolute;

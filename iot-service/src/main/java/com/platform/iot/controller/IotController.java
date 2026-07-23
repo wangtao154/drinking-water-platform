@@ -69,7 +69,7 @@ public class IotController {
      * @param sn     device serial number
      * @param range  time range: 1h, 6h, 24h, 7d, 30d (default: 24h)
      * @param fields   comma-separated field names (e.g., "P1,P17,P7"); if empty, returns all fields
-     * @param interval aggregation interval, e.g. 10s, 30s, 1m, 5m, 10m, 30m, 1h, 6h
+     * @param interval aggregation interval, e.g. 1s, 10s, 30s, 1m, 5m, 10m, 30m, 1h, 6h
      * @return time-series data grouped by field
      */
     @GetMapping("/devices/{sn}/history")

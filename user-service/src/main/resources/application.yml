@@ -89,6 +89,7 @@ wechat:
     oauth-callback-url: ${WX_OFFICIAL_OAUTH_CALLBACK_URL:http://localhost:8082/api/v1/wechat/official/callback}
     mock: ${WX_OFFICIAL_MOCK:true}
     bind-token-expire-seconds: ${WX_OFFICIAL_BIND_TOKEN_EXPIRE_SECONDS:600}
+    server-token: "${WX_OFFICIAL_SERVER_TOKEN:}"
 
 # Actuator
 management:

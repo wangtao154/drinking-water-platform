@@ -18,4 +18,7 @@ public class WechatOfficialProperties {
     private Boolean mock = true;
 
     private Integer bindTokenExpireSeconds = 600;
+
+    /** 公众号服务器配置 Token，用于校验微信事件回调签名 */
+    private String serverToken = "";
 }

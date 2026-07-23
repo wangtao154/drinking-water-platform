@@ -10,7 +10,9 @@ import com.platform.user.vo.OfficialAccountBindUrlVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.HtmlUtils;
@@ -43,6 +45,25 @@ public class WechatOfficialBindingController {
             String message = e instanceof BusinessException ? e.getMessage() : "绑定失败，请返回小程序重新尝试。";
             return htmlPage("绑定失败", message, false);
         }
+    }
+
+    @GetMapping(value = "/events", produces = MediaType.TEXT_PLAIN_VALUE)
+    public String verifyEvents(
+            @RequestParam String signature,
+            @RequestParam String timestamp,
+            @RequestParam String nonce,
+            @RequestParam String echostr) {
+        return bindingService.verifyEventCallback(signature, timestamp, nonce, echostr);
+    }
+
+    @PostMapping(value = "/events", consumes = MediaType.TEXT_XML_VALUE, produces = MediaType.TEXT_PLAIN_VALUE)
+    public String receiveEvents(
+            @RequestParam String signature,
+            @RequestParam String timestamp,
+            @RequestParam String nonce,
+            @RequestBody String body) {
+        bindingService.handleEventCallback(signature, timestamp, nonce, body);
+        return "success";
     }
 
     private Long requireWorker() {
