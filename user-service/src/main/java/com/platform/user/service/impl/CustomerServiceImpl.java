@@ -121,6 +121,10 @@ public class CustomerServiceImpl implements CustomerService {
         if (query.getDealerId() != null) {
             wrapper.eq(Customer::getDealerId, query.getDealerId());
         }
+        wrapper.and(w -> w.isNull(Customer::getOpenId)
+                .or()
+                .notInSql(Customer::getOpenId,
+                        "SELECT open_id FROM worker WHERE open_id IS NOT NULL AND deleted = 0"));
         if (StringUtils.hasText(query.getOrderBy())) {
             wrapper.last("ORDER BY " + query.getOrderBy() + " " + query.getOrderDirection());
         } else {

@@ -591,12 +591,24 @@ public class WorkOrderServiceImpl implements WorkOrderService {
         if (customerId == null) return;
         try {
             List<Map<String, Object>> results = jdbcTemplate.queryForList(
-                    "SELECT name, phone FROM customer WHERE id = ? AND deleted = 0",
+                    "SELECT name, phone, province, city, district, address FROM customer WHERE id = ? AND deleted = 0",
                     customerId);
             if (!results.isEmpty()) {
                 Map<String, Object> customer = results.get(0);
                 order.setCustomerName((String) customer.get("name"));
                 order.setCustomerPhone((String) customer.get("phone"));
+                if (!StringUtils.hasText(order.getProvince())) {
+                    order.setProvince((String) customer.get("province"));
+                }
+                if (!StringUtils.hasText(order.getCity())) {
+                    order.setCity((String) customer.get("city"));
+                }
+                if (!StringUtils.hasText(order.getDistrict())) {
+                    order.setDistrict((String) customer.get("district"));
+                }
+                if (!StringUtils.hasText(order.getAddress())) {
+                    order.setAddress((String) customer.get("address"));
+                }
             }
         } catch (Exception e) {
             log.warn("[WorkOrderService] 查询客户信息失败: customerId={}", customerId, e);

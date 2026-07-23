@@ -85,6 +85,7 @@ wechat:
     mock: ${WX_OFFICIAL_MOCK:true}
     work-order-assigned-template-id: ${WX_OFFICIAL_WORK_ORDER_ASSIGNED_TEMPLATE_ID:}
     mini-program-app-id: ${WX_MINI_PROGRAM_APPID:}
+    mini-program-jump-enabled: ${WX_OFFICIAL_MINI_PROGRAM_JUMP_ENABLED:false}
     work-order-detail-page: ${WX_WORK_ORDER_DETAIL_PAGE:pages/work-order/detail/index}
 
 # Actuator

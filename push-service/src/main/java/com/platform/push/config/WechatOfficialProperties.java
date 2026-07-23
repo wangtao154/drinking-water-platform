@@ -19,9 +19,15 @@ public class WechatOfficialProperties {
 
     private String miniProgramAppId;
 
+    private Boolean miniProgramJumpEnabled = false;
+
     private String workOrderDetailPage = "pages/work-order/detail/index?id={orderId}";
 
     public boolean isMockEnabled() {
         return Boolean.TRUE.equals(mock);
+    }
+
+    public boolean isMiniProgramJumpEnabled() {
+        return Boolean.TRUE.equals(miniProgramJumpEnabled);
     }
 }

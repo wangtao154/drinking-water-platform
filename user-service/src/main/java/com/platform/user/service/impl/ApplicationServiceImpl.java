@@ -263,6 +263,7 @@ public class ApplicationServiceImpl implements ApplicationService {
             worker.setServiceCount(0);
             worker.setRating(new BigDecimal("5.00"));
             workerMapper.insert(worker);
+            customerMapper.deleteById(customer.getId());
 
             log.info("[Application] 游客转运维人员: workerId={}, name={}, openId={}",
                     worker.getId(), app.getName(), customer.getOpenId());

@@ -7,9 +7,13 @@ import com.platform.push.config.WechatOfficialProperties;
 import com.platform.push.service.OfficialAccountNotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -87,7 +91,19 @@ public class OfficialAccountNotificationServiceImpl implements OfficialAccountNo
         String accessToken = getAccessToken();
         String url = "https://api.weixin.qq.com/cgi-bin/message/template/send?access_token=" + accessToken;
         Map<String, Object> body = buildTemplateBody(officialOpenId, event);
-        String response = restTemplate.postForObject(url, body, String.class);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
+        String response;
+        try {
+            response = restTemplate.postForObject(url, request, String.class);
+        } catch (HttpStatusCodeException e) {
+            String responseBody = defaultText(e.getResponseBodyAsString(), "-");
+            throw new IllegalStateException(
+                    "WeChat template send HTTP failed: status=" + e.getStatusCode().value()
+                            + ", body=" + responseBody,
+                    e);
+        }
         JsonNode json = objectMapper.readTree(response);
         int errCode = json.path("errcode").asInt(-1);
         if (errCode != 0) {
@@ -131,7 +147,7 @@ public class OfficialAccountNotificationServiceImpl implements OfficialAccountNo
         body.put("touser", officialOpenId);
         body.put("template_id", properties.getWorkOrderAssignedTemplateId());
 
-        if (StringUtils.hasText(properties.getMiniProgramAppId())) {
+        if (properties.isMiniProgramJumpEnabled() && StringUtils.hasText(properties.getMiniProgramAppId())) {
             Map<String, String> miniProgram = new LinkedHashMap<>();
             miniProgram.put("appid", properties.getMiniProgramAppId());
             miniProgram.put("pagepath", buildMiniProgramPage(event.getOrderId()));
@@ -145,6 +161,11 @@ public class OfficialAccountNotificationServiceImpl implements OfficialAccountNo
         putTemplateValue(data, "keyword3", buildDeviceText(event));
         putTemplateValue(data, "keyword4", formatTime(event.getAssignedAt()));
         putTemplateValue(data, "remark", "请进入小程序查看工单详情并及时接单。");
+        data.clear();
+        putTemplateValue(data, "character_string2", defaultText(event.getOrderNo(), "-"));
+        putTemplateValue(data, "thing7", templateThing(resolveNotifyAddress(event)));
+        putTemplateValue(data, "time12", formatTime(event.getAssignedAt()));
+        putTemplateValue(data, "thing9", templateThing(defaultText(event.getCustomerName(), defaultText(event.getCustomerPhone(), "-"))));
         body.put("data", data);
         return body;
     }
@@ -162,6 +183,42 @@ public class OfficialAccountNotificationServiceImpl implements OfficialAccountNo
             return device + " / " + address;
         }
         return defaultText(device, defaultText(address, "-"));
+    }
+
+    private String resolveNotifyAddress(WorkOrderAssignedEvent event) {
+        String address = buildAddress(event);
+        if (StringUtils.hasText(address)) {
+            return address;
+        }
+
+        address = findAddressByOrderId(event.getOrderId());
+        if (StringUtils.hasText(address)) {
+            return address;
+        }
+
+        return buildDeviceText(event);
+    }
+
+    private String findAddressByOrderId(Long orderId) {
+        if (orderId == null) {
+            return null;
+        }
+        try {
+            List<String> addresses = jdbcTemplate.queryForList(
+                    "SELECT CONCAT_WS('', " +
+                            "COALESCE(NULLIF(wo.province, ''), NULLIF(c.province, '')), " +
+                            "COALESCE(NULLIF(wo.city, ''), NULLIF(c.city, '')), " +
+                            "COALESCE(NULLIF(wo.district, ''), NULLIF(c.district, '')), " +
+                            "COALESCE(NULLIF(wo.address, ''), NULLIF(c.address, ''))) AS full_address " +
+                            "FROM work_order wo LEFT JOIN customer c ON c.id = wo.customer_id AND c.deleted = 0 " +
+                            "WHERE wo.id = ? AND wo.deleted = 0",
+                    String.class,
+                    orderId);
+            return addresses.isEmpty() ? null : addresses.get(0);
+        } catch (Exception e) {
+            log.warn("[OfficialAccountNotify] 查询工单地址失败: orderId={}", orderId, e);
+            return null;
+        }
     }
 
     private String buildAddress(WorkOrderAssignedEvent event) {
@@ -193,6 +250,11 @@ public class OfficialAccountNotificationServiceImpl implements OfficialAccountNo
 
     private String defaultText(String value, String fallback) {
         return StringUtils.hasText(value) ? value : fallback;
+    }
+
+    private String templateThing(String value) {
+        String text = defaultText(value, "-").trim();
+        return text.length() <= 20 ? text : text.substring(0, 20);
     }
 
     private void markOrderNotify(Long orderId, String status, String message) {
