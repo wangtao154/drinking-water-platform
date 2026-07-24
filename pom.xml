@@ -40,6 +40,7 @@
         <module>order-service</module>
         <module>payment-service</module>
         <module>finance-service</module>
+        <module>water-service</module>
         <!-- P4 阶段 -->
         <module>inventory-service</module>
         <module>monitor-service</module>

@@ -558,6 +558,34 @@ services:
       - drinking-water-net
 
   # finance-service - 财务结算服务
+  # water-service - scan-to-dispense water service
+  water-service:
+    build:
+      context: ./water-service
+      dockerfile: Dockerfile
+    container_name: dw-water-service
+    restart: always
+    env_file: .env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nacos:
+        condition: service_healthy
+      iot-service:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8100:8100"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8100/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - drinking-water-net
+
   finance-service:
     build:
       context: ./finance-service

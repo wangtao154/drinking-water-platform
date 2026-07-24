@@ -79,6 +79,14 @@ spring:
           filters:
             - StripPrefix=0
 
+        # ---- water-service ----
+        - id: water-service
+          uri: lb://water-service
+          predicates:
+            - Path=/api/v1/water/**
+          filters:
+            - StripPrefix=0
+
         # ---- finance-service (P3) ----
         - id: finance-service
           uri: lb://finance-service
