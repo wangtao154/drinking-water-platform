@@ -4,18 +4,16 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 /**
- * 统一错误码枚举
- * 对应设计文档附录 B
+ * Unified result codes used by platform services.
  */
 @Getter
 @AllArgsConstructor
 public enum ResultCode {
 
-    // ==================== 成功 ====================
+    // Success
     SUCCESS(200, "success"),
 
-    // ==================== 客户端错误 4xxxx ====================
-    // 设备相关 400xx
+    // Client errors: device and business validation, 400xx
     DEVICE_NOT_FOUND(40001, "设备ID不存在"),
     DEVICE_NOT_REGISTERED(40002, "设备尚未登记，请先联系厂家录入设备信息"),
     DEVICE_ALREADY_BOUND(40003, "该设备已被其他用户绑定"),
@@ -27,7 +25,7 @@ public enum ResultCode {
     DEVICE_OFFLINE(40009, "设备离线，无法下发指令"),
     FILTER_ALREADY_IN_USE(40010, "滤芯已被安装使用"),
 
-    // 认证相关 401xx
+    // Authentication, 401xx
     UNAUTHORIZED(40100, "未登录或Token已过期"),
     ACCOUNT_NOT_FOUND(40101, "账号不存在"),
     PASSWORD_ERROR(40102, "密码错误"),
@@ -35,15 +33,15 @@ public enum ResultCode {
     TOKEN_INVALID(40104, "Token无效"),
     REFRESH_TOKEN_EXPIRED(40105, "刷新Token已过期，请重新登录"),
 
-    // 权限相关 403xx
+    // Authorization, 403xx
     FORBIDDEN(40300, "无权限访问"),
 
-    // 资源相关 404xx
+    // Resource, 404xx
     NOT_FOUND(40400, "资源不存在"),
     WORK_ORDER_NOT_FOUND(40401, "工单不存在"),
     ORDER_NOT_FOUND(40402, "订单不存在"),
 
-    // 业务冲突 409xx
+    // Conflict, 409xx
     DEVICE_STATUS_CONFLICT(40901, "设备状态不允许此操作"),
     WORK_ORDER_STATUS_CONFLICT(40902, "工单状态不允许此操作"),
     ORDER_STATUS_CONFLICT(40903, "订单状态不允许此操作"),
@@ -51,7 +49,7 @@ public enum ResultCode {
     FILTER_LIFE_EXPIRED(40905, "滤芯已过期"),
     DATA_DUPLICATE(40906, "数据已存在"),
 
-    // ==================== 服务端错误 5xxxx ====================
+    // Server errors, 5xxxx
     INTERNAL_ERROR(50000, "服务器内部错误"),
     MQTT_COMMAND_FAILED(50001, "MQTT指令下发失败"),
     PAYMENT_FAILED(50002, "支付下单失败"),

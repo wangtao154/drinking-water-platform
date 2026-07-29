@@ -10,11 +10,18 @@
           <el-input v-model="form.account" placeholder="请输入账号" prefix-icon="User" />
         </el-form-item>
         <el-form-item prop="password">
-          <el-input v-model="form.password" type="password" placeholder="请输入密码" prefix-icon="Lock" show-password @keyup.enter="handleLogin" />
+          <el-input
+            v-model="form.password"
+            type="password"
+            placeholder="请输入密码"
+            prefix-icon="Lock"
+            show-password
+            @keyup.enter="handleLogin"
+          />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" style="width: 100%" :loading="loading" @click="handleLogin">
-            登 录
+          <el-button type="primary" native-type="submit" style="width: 100%" :loading="loading">
+            登录
           </el-button>
         </el-form-item>
       </el-form>
@@ -23,8 +30,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 
@@ -46,22 +53,23 @@ const rules: FormRules = {
 }
 
 async function handleLogin() {
-  if (!formRef.value) return
-  await formRef.value.validate(async (valid) => {
-    if (!valid) return
-    loading.value = true
-    try {
-      await userStore.login(form)
-      ElMessage.success('登录成功')
-      const redirect = (route.query.redirect as string) || '/'
-      router.push(redirect)
-    } catch (error: any) {
-      // 错误已在拦截器中处理
-      console.error('login error', error)
-    } finally {
-      loading.value = false
-    }
-  })
+  if (!formRef.value || loading.value) return
+
+  const valid = await formRef.value.validate().catch(() => false)
+  if (!valid) return
+
+  loading.value = true
+  try {
+    await userStore.login(form)
+    ElMessage.success('登录成功')
+    const redirect = (route.query.redirect as string) || '/dashboard'
+    router.replace(redirect).catch((error) => {
+      console.error('login redirect error', error)
+    })
+  } catch (error) {
+    console.error('login error', error)
+    loading.value = false
+  }
 }
 </script>
 

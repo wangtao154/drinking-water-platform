@@ -5,12 +5,14 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -25,6 +27,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * JWT 全局认证过滤器
@@ -35,7 +38,12 @@ import java.util.Set;
  */
 @Slf4j
 @Component
+@RequiredArgsConstructor
 public class JwtAuthFilter implements GlobalFilter, Ordered {
+
+    private static final String REDIS_SESSION_KEY = "auth:session:";
+
+    private final ReactiveStringRedisTemplate stringRedisTemplate;
 
     @Value("${jwt.secret:drinking-water-platform-jwt-secret-key-please-change-in-production-2026}")
     private String secret;
@@ -53,6 +61,8 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             "/api/v1/auth/sms-login",
             "/api/v1/wechat/official/callback",
             "/api/v1/wechat/official/events",
+            "/api/v1/water/pay/wechat/notify",
+            "/api/v1/water/scan-orders/price-preview",
             "/actuator",
             "/actuator/health",
             "/actuator/info"
@@ -90,14 +100,28 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
                     .getPayload();
 
             // 4. 注入下游 header（userName URL 编码，避免 HTTP 头中文乱码）
-            String userName = claims.get("userName", String.class);
-            ServerHttpRequest mutatedRequest = request.mutate()
-                    .header("X-User-Id", String.valueOf(claims.get("userId")))
-                    .header("X-User-Name", userName != null ? URLEncoder.encode(userName, StandardCharsets.UTF_8) : "")
-                    .header("X-User-Type", claims.get("userType", String.class) != null ? claims.get("userType", String.class) : "")
-                    .build();
+            String userId = String.valueOf(claims.get("userId"));
+            String userType = claims.get("userType", String.class);
+            String sessionId = claims.get("sessionId", String.class);
+            if (userId == null || userId.isBlank() || "null".equals(userId)
+                    || userType == null || userType.isBlank()
+                    || sessionId == null || sessionId.isBlank()) {
+                return unauthorized(exchange, 40105, "登录状态已失效，请重新登录");
+            }
 
-            return chain.filter(exchange.mutate().request(mutatedRequest).build());
+            return stringRedisTemplate.opsForValue()
+                    .get(REDIS_SESSION_KEY + userType + ":" + userId)
+                    .flatMap(storedSessionId -> {
+                        if (!sessionId.equals(storedSessionId)) {
+                            return unauthorized(exchange, 40106, "账号已在其他设备登录，请重新登录");
+                        }
+                        return continueWithAuthenticatedRequest(exchange, chain, request, claims, userId, userType);
+                    })
+                    .switchIfEmpty(unauthorized(exchange, 40105, "登录状态已失效，请重新登录"))
+                    .onErrorResume(e -> {
+                        log.error("[Gateway] Redis session validation failed", e);
+                        return unauthorized(exchange, 40107, "登录状态校验失败，请重新登录");
+                    });
 
         } catch (JwtException e) {
             log.warn("[Gateway] JWT验证失败: {}", e.getMessage());
@@ -107,6 +131,31 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
 
     private boolean isWhitelisted(String path) {
         return WHITELIST_PATHS.stream().anyMatch(path::startsWith);
+    }
+
+    private Mono<Void> continueWithAuthenticatedRequest(ServerWebExchange exchange,
+                                                        GatewayFilterChain chain,
+                                                        ServerHttpRequest request,
+                                                        Claims claims,
+                                                        String userId,
+                                                        String userType) {
+        String userName = claims.get("userName", String.class);
+        Object permissionsClaim = claims.get("permissions");
+        String permissions = "";
+        if (permissionsClaim instanceof List<?> permissionList) {
+            permissions = permissionList.stream()
+                    .map(String::valueOf)
+                    .collect(Collectors.joining(","));
+        }
+
+        ServerHttpRequest mutatedRequest = request.mutate()
+                .header("X-User-Id", userId)
+                .header("X-User-Name", userName != null ? URLEncoder.encode(userName, StandardCharsets.UTF_8) : "")
+                .header("X-User-Type", userType)
+                .header("X-User-Permissions", permissions)
+                .build();
+
+        return chain.filter(exchange.mutate().request(mutatedRequest).build());
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange, int code, String message) {

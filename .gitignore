@@ -41,6 +41,8 @@ test-*.html
 # Docker data
 docker/data/
 docker/zoneinfo/
+docker/wechatpay/certs/
+docker/https-proxy/certs/
 
 # Maven local repo
 .m2/

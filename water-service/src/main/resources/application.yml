@@ -59,13 +59,32 @@ jwt:
   access-expire: 7200
   refresh-expire: 604800
 
+internal:
+  service-token: ${INTERNAL_SERVICE_TOKEN:drinking-water-internal-service-token-change-me}
+
 water:
   scan:
     protocol-version: SW1
     command-point: Q74
     sign-secret: ${WATER_SCAN_SIGN_SECRET:water-scan-sign-secret-change-me}
-    mock-default-amount: 1
+    min-pay-amount: ${WATER_SCAN_MIN_PAY_AMOUNT:1}
+    unit-price-cents-per-liter: ${WATER_SCAN_UNIT_PRICE_CENTS_PER_LITER:0}
+    min-target-ml: ${WATER_SCAN_MIN_TARGET_ML:100}
+    max-target-ml: ${WATER_SCAN_MAX_TARGET_ML:10000}
     default-duration-seconds: 120
+
+wechat:
+  pay:
+    enabled: ${WECHAT_PAY_ENABLED:false}
+    app-id: ${WX_APPID:}
+    mch-id: ${WECHAT_PAY_MCH_ID:}
+    api-v3-key: ${WECHAT_PAY_API_V3_KEY:}
+    cert-serial-no: ${WECHAT_PAY_CERT_SERIAL_NO:}
+    private-key-path: ${WECHAT_PAY_PRIVATE_KEY_PATH:}
+    platform-public-key-id: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID:}
+    platform-public-key-path: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH:}
+    notify-url: ${WECHAT_PAY_NOTIFY_URL:https://zyswx.juconyun.com/api/v1/water/pay/wechat/notify}
+    api-base-url: https://api.mch.weixin.qq.com
 
 management:
   health:

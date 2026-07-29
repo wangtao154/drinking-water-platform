@@ -111,6 +111,19 @@ public class IotController {
      */
     @PostMapping("/devices/{sn}/set")
     public R<CommandLog> sendSetCommand(@PathVariable String sn, @RequestBody Map<String, String> body) {
+        return doSendSetCommand(sn, body, currentOperatorId());
+    }
+
+    @PostMapping("/internal/devices/{sn}/set")
+    public R<CommandLog> sendInternalSetCommand(
+            @PathVariable String sn,
+            @RequestBody Map<String, String> body,
+            @RequestHeader(value = INTERNAL_TOKEN_HEADER, required = false) String internalToken) {
+        verifyInternalToken(internalToken);
+        return doSendSetCommand(sn, body, null);
+    }
+
+    private R<CommandLog> doSendSetCommand(String sn, Map<String, String> body, Long operatorId) {
         String pointID = body.get("pointID");
         String value = body.get("value");
         if (pointID == null || pointID.isEmpty()) {
@@ -119,10 +132,13 @@ public class IotController {
         if (value == null) {
             return R.fail(40001, "value 不能为空");
         }
-        CurrentUser currentUser = UserContext.get();
-        Long operatorId = currentUser != null ? currentUser.getUserId() : null;
         CommandLog log = commandService.sendSetCommand(sn, pointID, value, operatorId);
         return R.ok(log);
+    }
+
+    private Long currentOperatorId() {
+        CurrentUser currentUser = UserContext.get();
+        return currentUser != null ? currentUser.getUserId() : null;
     }
 
     @GetMapping("/devices/{sn}/online-status")

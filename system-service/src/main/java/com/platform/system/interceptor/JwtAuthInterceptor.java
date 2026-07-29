@@ -12,6 +12,9 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.stream.Collectors;
 
 /**
  * JWT 认证拦截器
@@ -41,6 +44,13 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
                 currentUser.setUserName(URLDecoder.decode(headerUserName, StandardCharsets.UTF_8));
             }
             currentUser.setUserType(request.getHeader("X-User-Type"));
+            String permissions = request.getHeader("X-User-Permissions");
+            if (permissions != null && !permissions.isBlank()) {
+                currentUser.setPermissions(Arrays.stream(permissions.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .collect(Collectors.toCollection(HashSet::new)));
+            }
             UserContext.set(currentUser);
             return true;
         }

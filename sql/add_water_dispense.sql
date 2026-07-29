@@ -11,7 +11,10 @@ CREATE TABLE IF NOT EXISTS water_dispense_order (
     command_status   VARCHAR(32)  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/SENT/ACK/FAILED',
     q74_payload      VARCHAR(255)          COMMENT 'Q74 protocol payload',
     transaction_id   VARCHAR(64)           COMMENT 'Payment transaction id',
-    mock_payment     TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '1=mock payment',
+    payment_provider VARCHAR(32)            COMMENT 'Payment provider: MOCK/WECHAT',
+    prepay_id        VARCHAR(128)           COMMENT 'WeChat Pay prepay_id',
+    wx_open_id       VARCHAR(128)           COMMENT 'Payer mini program openid',
+    mock_payment     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1=mock payment',
     paid_at          DATETIME(3)           COMMENT 'Paid time',
     command_sent_at  DATETIME(3)           COMMENT 'Q74 command sent time',
     completed_at     DATETIME(3)           COMMENT 'Completed time',
@@ -26,6 +29,8 @@ CREATE TABLE IF NOT EXISTS water_dispense_order (
     KEY idx_water_dispense_customer_id (customer_id),
     KEY idx_water_dispense_device_id (device_id),
     KEY idx_water_dispense_sn (sn),
+    KEY idx_water_dispense_prepay_id (prepay_id),
+    UNIQUE KEY uk_water_dispense_transaction_id (transaction_id),
     KEY idx_water_dispense_status (dispense_status),
     KEY idx_water_dispense_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Scan water dispense order';

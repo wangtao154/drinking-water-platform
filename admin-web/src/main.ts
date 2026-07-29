@@ -21,7 +21,9 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 app.directive('permission', {
   mounted(el: HTMLElement, binding) {
     const userStore = useUserStore()
-    if (binding.value && !userStore.hasPermission(binding.value)) {
+    const required = Array.isArray(binding.value) ? binding.value : [binding.value]
+    const allowed = !binding.value || required.some((perm: string) => userStore.hasPermission(perm))
+    if (!allowed) {
       el.parentNode?.removeChild(el)
     }
   }

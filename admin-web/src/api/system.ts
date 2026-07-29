@@ -1,5 +1,5 @@
 import { get, post, put, del } from '@/utils/request'
-import type { PageQueryDTO, PageResult, SysRoleVO, SysAccountVO, R } from '@/types/api'
+import type { PageQueryDTO, PageResult, SysPermissionVO, SysRoleVO, SysAccountVO, R } from '@/types/api'
 
 const BASE = '/v1/system'
 
@@ -18,6 +18,15 @@ export function updateRole(id: number, data: { roleCode: string; roleName: strin
 }
 export function deleteRole(id: number) {
   return del<null>(`${BASE}/roles/${id}`)
+}
+export function permissionTree() {
+  return get<SysPermissionVO[]>(`${BASE}/permissions/tree`)
+}
+export function getRolePermissions(id: number) {
+  return get<number[]>(`${BASE}/roles/${id}/permissions`)
+}
+export function updateRolePermissions(id: number, permissionIds: number[]) {
+  return put<null>(`${BASE}/roles/${id}/permissions`, { permissionIds })
 }
 
 // ===== 账户管理 =====

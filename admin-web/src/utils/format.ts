@@ -73,6 +73,7 @@ export function statusTagType(status: string): 'success' | 'warning' | 'danger' 
     ACTIVATED_OFFLINE: 'success',
     UNHANDLED: 'danger',
     HANDLED: 'success',
+    ALARM: 'danger',
     CRITICAL: 'danger',
     WARNING: 'warning'
   }
@@ -118,6 +119,7 @@ export function statusLabel(status: string): string {
     ISSUED: '已开票',
     UNHANDLED: '未处理',
     HANDLED: '已处理',
+    ALARM: '报警',
     CRITICAL: '严重',
     WARNING: '警告',
     INFO: '提示',

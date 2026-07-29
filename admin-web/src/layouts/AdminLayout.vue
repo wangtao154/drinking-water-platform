@@ -119,6 +119,28 @@ const router = useRouter()
 const userStore = useUserStore()
 const appStore = useAppStore()
 
+function canAccessRoute(route: any) {
+  const permission = route.meta?.permission
+  if (!permission || userStore.permissions.includes('*') || userStore.roles.includes('SUPER_ADMIN')) {
+    return true
+  }
+  if (Array.isArray(permission)) {
+    return permission.some((perm: string) => userStore.permissions.includes(perm))
+  }
+  return userStore.permissions.includes(permission)
+}
+
+function filterMenuRoutes(routes: any[]) {
+  return routes
+    .filter(route => !route.meta?.hidden && canAccessRoute(route))
+    .map(route => {
+      const children = route.children
+        ?.filter((child: any) => !child.meta?.hidden && canAccessRoute(child))
+      return { ...route, children }
+    })
+    .filter(route => !route.children || route.children.length > 0)
+}
+
 // 合并静态和动态路由用于菜单渲染
 const allRoutes = computed(() => {
   const staticAdmin = constantRoutes.find(r => r.path === '/')
@@ -135,7 +157,7 @@ const menuRoutes = computed(() => {
     meta: c.meta,
     children: c.children
   }))
-  return [...staticChildren, ...asyncRoutes.filter(r => !r.meta?.hidden)]
+  return filterMenuRoutes([...staticChildren, ...asyncRoutes])
 })
 
 // 当前激活菜单

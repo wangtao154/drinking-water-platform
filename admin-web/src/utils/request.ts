@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig } from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import NProgress from 'nprogress'
-import { getToken, removeToken } from './auth'
+import { getToken } from './auth'
 import { useUserStore } from '@/stores/user'
 import router from '@/router'
 import type { R, PageResult } from '@/types/api'
@@ -13,6 +13,34 @@ const service: AxiosInstance = axios.create({
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' }
 })
+
+function getRequestToken(config: any): string | null {
+  const headers = config?.headers
+  const authorization =
+    headers?.Authorization ||
+    headers?.authorization ||
+    (typeof headers?.get === 'function' ? headers.get('Authorization') : null)
+
+  if (typeof authorization !== 'string') return null
+  const prefix = 'Bearer '
+  return authorization.startsWith(prefix) ? authorization.slice(prefix.length) : null
+}
+
+function shouldHandleAuthFailure(config: any): boolean {
+  const requestToken = getRequestToken(config)
+  const currentToken = getToken()
+  return !requestToken || !currentToken || requestToken === currentToken
+}
+
+function redirectToLogin(): void {
+  const userStore = useUserStore()
+  userStore.resetState()
+
+  const currentRoute = router.currentRoute.value
+  if (currentRoute.path !== '/login') {
+    router.replace(`/login?redirect=${encodeURIComponent(currentRoute.fullPath)}`)
+  }
+}
 
 // 请求拦截
 service.interceptors.request.use(
@@ -34,16 +62,15 @@ service.interceptors.request.use(
 service.interceptors.response.use(
   (response): any => {
     NProgress.done()
-    const res = response.data as R
 
-    // 如果是文件下载（blob），直接返回
+    // 文件下载（blob）直接返回原始响应
     if (response.config.responseType === 'blob') {
       return response
     }
 
+    const res = response.data as R
     if (res.code === 200) {
-      // 后端 Long 类型通过 ToStringSerializer 序列化为字符串
-      // PageResult 的 total/current/pages 等字段需要转为 number 供前端组件使用
+      // 后端 Long 类型会序列化为字符串，分页字段需要转换为 number 供组件使用。
       if (res.data && Array.isArray((res.data as any).records)) {
         const pageData = res.data as any
         if (pageData.total != null) pageData.total = Number(pageData.total) || 0
@@ -54,28 +81,27 @@ service.interceptors.response.use(
       return res
     }
 
-    // Token 过期
+    // Token 过期。若这是旧 token 的滞后响应，不清理当前新登录状态。
     if (res.code === 40100) {
+      if (!shouldHandleAuthFailure(response.config)) {
+        return Promise.reject(new Error('stale token expired'))
+      }
+
       ElMessageBox.confirm('登录状态已过期，请重新登录', '提示', {
         confirmButtonText: '重新登录',
         cancelButtonText: '取消',
         type: 'warning'
       }).then(() => {
-        const userStore = useUserStore()
-        userStore.resetState()
-        removeToken()
-        router.push('/login')
+        redirectToLogin()
       })
       return Promise.reject(new Error('token expired'))
     }
 
-    // 无权限
     if (res.code === 40300) {
       ElMessage.error('无权限访问')
       return Promise.reject(new Error('forbidden'))
     }
 
-    // 其他业务错误
     ElMessage.error(res.message || '请求失败')
     return Promise.reject(new Error(res.message || 'Error'))
   },
@@ -84,9 +110,13 @@ service.interceptors.response.use(
     if (error.response) {
       const status = error.response.status
       if (status === 401) {
+        // 旧 token 的并发请求可能晚于新登录返回，不能让它清掉刚写入的新 token。
+        if (!shouldHandleAuthFailure(error.config)) {
+          return Promise.reject(error)
+        }
+
         ElMessage.error('登录已过期，请重新登录')
-        removeToken()
-        router.push('/login')
+        redirectToLogin()
       } else if (status === 403) {
         ElMessage.error('无权限访问')
       } else if (status === 404) {
@@ -105,7 +135,6 @@ service.interceptors.response.use(
   }
 )
 
-// 封装请求方法
 export function request<T = any>(config: AxiosRequestConfig): Promise<R<T>> {
   return service(config) as unknown as Promise<R<T>>
 }
@@ -126,10 +155,8 @@ export function del<T = any>(url: string, params?: any): Promise<R<T>> {
   return request<T>({ method: 'DELETE', url, params })
 }
 
-// 分页请求封装
 export async function page<T = any>(url: string, params: any): Promise<R<PageResult<T>>> {
   const res = await get<PageResult<T>>(url, params)
-  // 后端 Long 类型通过 ToStringSerializer 序列化为字符串，需转为 number 供前端使用
   if (res.data) {
     res.data.total = Number(res.data.total) || 0
     res.data.current = Number(res.data.current) || 0

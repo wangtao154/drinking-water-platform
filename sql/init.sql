@@ -335,9 +335,10 @@ CREATE TABLE IF NOT EXISTS worker_wechat_binding (
     created_by          BIGINT                                 COMMENT '创建人ID',
     updated_by          BIGINT                                 COMMENT '更新人ID',
     deleted             TINYINT(1)    NOT NULL DEFAULT 0       COMMENT '逻辑删除：0未删，1已删',
+    active_flag         TINYINT(1) GENERATED ALWAYS AS (IF(deleted = 0, 1, NULL)) STORED COMMENT '未删除唯一约束标记',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_worker_id (worker_id),
-    UNIQUE KEY uk_official_open_id (official_open_id),
+    UNIQUE KEY uk_worker_id_active (worker_id, active_flag),
+    UNIQUE KEY uk_official_open_id_active (official_open_id, active_flag),
     KEY idx_union_id (union_id),
     KEY idx_subscribe_status (subscribe_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='运维人员公众号绑定表';

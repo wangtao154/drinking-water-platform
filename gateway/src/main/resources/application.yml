@@ -152,7 +152,7 @@ spring:
       host: ${REDIS_HOST:dw-redis}
       port: 6379
       password: ${REDIS_PASSWORD:Redis@2026}
-      database: 1
+      database: 0
 
 # JWT
 jwt:

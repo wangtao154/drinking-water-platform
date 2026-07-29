@@ -32,7 +32,7 @@
           {{ device.activatedAt ? formatDateTime(device.activatedAt, 'YYYY-MM-DD HH:mm:ss') : '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="入库时间">
-          {{ (device.updatedAt || device.createdAt) ? formatDateTime(device.updatedAt || device.createdAt, 'YYYY-MM-DD HH:mm:ss') : '-' }}
+          {{ device.createdAt ? formatDateTime(device.createdAt, 'YYYY-MM-DD HH:mm:ss') : '-' }}
         </el-descriptions-item>
       </el-descriptions>
 
@@ -416,7 +416,8 @@ const settablePoints = computed(() => {
     'Q11', 'Q12', 'Q13', 'Q14', 'Q15',
     'Q26', 'Q27', 'Q28', 'Q29', 'Q30', 'Q31', 'Q32', 'Q33',
     'Q34', 'Q54', 'Q74',
-    'Q83', 'Q84', 'Q89', 'Q90'
+    'Q83', 'Q84', 'Q89', 'Q90',
+    'Q91', 'Q92', 'Q95', 'Q96'
   ]
   return ids.map(id => ({ id, name: getPointInfo(id).name }))
 })

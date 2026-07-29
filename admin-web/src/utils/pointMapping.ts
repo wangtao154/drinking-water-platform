@@ -99,6 +99,10 @@ const pointMap: Record<string, PointInfo> = {
   // Q54: MQTT端口
   Q54: { name: 'MQTT端口',       unit: '',    category: 'config' },
   Q74: { name: '扫码出水信息',       unit: '',    category: 'config' },
+  Q91: { name: 'Q91',       unit: '',    category: 'config' },
+  Q92: { name: 'Q92',       unit: '',    category: 'config' },
+  Q95: { name: 'Q95',       unit: '',    category: 'config' },
+  Q96: { name: 'Q96',       unit: '',    category: 'config' },
 }
 
 export function getPointInfo(pointId: string): PointInfo {

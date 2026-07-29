@@ -7,10 +7,12 @@ import com.platform.system.dto.AccountCreateDTO;
 import com.platform.system.dto.AccountUpdateDTO;
 import com.platform.system.dto.MqttConfigUpdateDTO;
 import com.platform.system.dto.RoleCreateDTO;
+import com.platform.system.dto.RolePermissionUpdateDTO;
 import com.platform.system.vo.AuditLogVO;
 import com.platform.system.vo.MqttConfigVO;
 import com.platform.system.vo.SysAccountVO;
 import com.platform.system.vo.SysConfigVO;
+import com.platform.system.vo.SysPermissionVO;
 import com.platform.system.vo.SysRoleVO;
 
 import java.util.List;
@@ -35,6 +37,9 @@ public interface SystemService {
     SysRoleVO createRole(RoleCreateDTO dto);
     SysRoleVO updateRole(Long id, RoleCreateDTO dto);
     void deleteRole(Long id);
+    List<SysPermissionVO> permissionTree();
+    List<Long> getRolePermissionIds(Long roleId);
+    void updateRolePermissions(Long roleId, RolePermissionUpdateDTO dto);
 
     // ===== 账户管理 =====
     PageResult<SysAccountVO> accountPage(Integer pageNum, Integer pageSize, String keyword);

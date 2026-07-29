@@ -125,9 +125,9 @@ public class MqttMessageHandler {
             createAlert(sn, device, "DEVICE_FAULT", "ALARM", "设备故障报警，P28=" + p28);
         }
 
-        // P32 - low pressure (water shortage)
+        // P32 - water shortage: 0 means shortage, non-zero means normal.
         Object p32 = points.get("P32");
-        if (p32 != null && ((Number) p32).doubleValue() > 0) {
+        if (p32 != null && ((Number) p32).doubleValue() == 0) {
             createAlert(sn, device, "WATER_SHORTAGE", "ALARM", "缺水报警，P32=" + p32);
         }
 

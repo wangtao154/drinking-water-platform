@@ -39,6 +39,12 @@ public class WaterDispenseOrder extends BaseEntity {
 
     private String transactionId;
 
+    private String paymentProvider;
+
+    private String prepayId;
+
+    private String wxOpenId;
+
     private Boolean mockPayment;
 
     private LocalDateTime paidAt;

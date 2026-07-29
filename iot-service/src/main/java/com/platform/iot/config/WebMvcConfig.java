@@ -20,7 +20,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/internal/**",
                         "/actuator/**",
                         "/error",
-                        // MQTT 管理端点（system-service Feign 调用，免认证）
+                        "/api/v1/iot/internal/**",
                         "/api/v1/iot/mqtt/**"
                 );
     }

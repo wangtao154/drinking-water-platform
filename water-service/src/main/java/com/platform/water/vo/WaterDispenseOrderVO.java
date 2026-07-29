@@ -20,6 +20,7 @@ public class WaterDispenseOrderVO {
     private String commandStatus;
     private String q74Payload;
     private String transactionId;
+    private String paymentProvider;
     private Boolean mockPayment;
     private LocalDateTime paidAt;
     private LocalDateTime commandSentAt;
@@ -41,6 +42,7 @@ public class WaterDispenseOrderVO {
         vo.setCommandStatus(entity.getCommandStatus());
         vo.setQ74Payload(entity.getQ74Payload());
         vo.setTransactionId(entity.getTransactionId());
+        vo.setPaymentProvider(entity.getPaymentProvider());
         vo.setMockPayment(entity.getMockPayment());
         vo.setPaidAt(entity.getPaidAt());
         vo.setCommandSentAt(entity.getCommandSentAt());

@@ -44,6 +44,7 @@ import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -77,6 +78,60 @@ public class AuthServiceImpl implements AuthService {
 
     private static final String REDIS_ACCESS_TOKEN_KEY = "auth:token:access:";
     private static final String REDIS_REFRESH_TOKEN_KEY = "auth:token:refresh:";
+    private static final String REDIS_SESSION_KEY = "auth:session:";
+
+    private TokenPair issueTokens(CurrentUser currentUser) {
+        String sessionId = UUID.randomUUID().toString();
+        String accessToken = jwtUtil.createAccessToken(currentUser, sessionId);
+        String refreshToken = jwtUtil.createRefreshToken(currentUser, sessionId);
+        long accessExpire = jwtUtil.getAccessTokenExpire();
+        long refreshExpire = jwtUtil.getRefreshTokenExpire();
+        String identityKey = identityKey(currentUser.getUserType(), currentUser.getUserId());
+
+        stringRedisTemplate.opsForValue().set(
+                REDIS_ACCESS_TOKEN_KEY + identityKey, accessToken, Duration.ofSeconds(accessExpire));
+        stringRedisTemplate.opsForValue().set(
+                REDIS_REFRESH_TOKEN_KEY + identityKey, refreshToken, Duration.ofSeconds(refreshExpire));
+        stringRedisTemplate.opsForValue().set(
+                REDIS_SESSION_KEY + identityKey, sessionId, Duration.ofSeconds(refreshExpire));
+
+        return new TokenPair(accessToken, refreshToken, sessionId, accessExpire);
+    }
+
+    private void storeAccessToken(CurrentUser currentUser, String accessToken, long accessExpire) {
+        stringRedisTemplate.opsForValue().set(
+                REDIS_ACCESS_TOKEN_KEY + identityKey(currentUser.getUserType(), currentUser.getUserId()),
+                accessToken,
+                Duration.ofSeconds(accessExpire)
+        );
+    }
+
+    private void deleteIdentityTokens(String userType, Long userId) {
+        if (userId == null || userType == null || userType.isBlank()) {
+            return;
+        }
+        String identityKey = identityKey(userType, userId);
+        stringRedisTemplate.delete(REDIS_ACCESS_TOKEN_KEY + identityKey);
+        stringRedisTemplate.delete(REDIS_REFRESH_TOKEN_KEY + identityKey);
+        stringRedisTemplate.delete(REDIS_SESSION_KEY + identityKey);
+    }
+
+    private void deletePossibleIdentityTokens(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        List.of("SUPER_ADMIN", "ADMIN", "OPERATOR", "FINANCE", "CUSTOMER", "GUEST", "WORKER")
+                .forEach(userType -> deleteIdentityTokens(userType, userId));
+        stringRedisTemplate.delete(REDIS_ACCESS_TOKEN_KEY + userId);
+        stringRedisTemplate.delete(REDIS_REFRESH_TOKEN_KEY + userId);
+    }
+
+    private String identityKey(String userType, Long userId) {
+        return userType + ":" + userId;
+    }
+
+    private record TokenPair(String accessToken, String refreshToken, String sessionId, long accessExpire) {
+    }
 
     @Override
     public LoginVO login(LoginDTO dto, String clientIp) {
@@ -122,22 +177,9 @@ public class AuthServiceImpl implements AuthService {
         currentUser.setPermissions(permissionCodes);
 
         // 7. 生成 JWT
-        String accessToken = jwtUtil.createAccessToken(currentUser);
-        String refreshToken = jwtUtil.createRefreshToken(currentUser);
+        TokenPair tokens = issueTokens(currentUser);
 
         // 8. 存入 Redis
-        long accessExpire = jwtUtil.getAccessTokenExpire();
-        long refreshExpire = jwtUtil.getRefreshTokenExpire();
-        stringRedisTemplate.opsForValue().set(
-                REDIS_ACCESS_TOKEN_KEY + user.getId(),
-                accessToken,
-                Duration.ofSeconds(accessExpire)
-        );
-        stringRedisTemplate.opsForValue().set(
-                REDIS_REFRESH_TOKEN_KEY + user.getId(),
-                refreshToken,
-                Duration.ofSeconds(refreshExpire)
-        );
 
         // 9. 更新最后登录信息
         sysUserMapper.updateLastLogin(user.getId(), clientIp);
@@ -155,9 +197,9 @@ public class AuthServiceImpl implements AuthService {
         log.info("用户登录成功: userId={}, username={}, role={}", user.getId(), user.getUsername(), role.getRoleCode());
 
         return LoginVO.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .expiresIn(accessExpire)
+                .accessToken(tokens.accessToken())
+                .refreshToken(tokens.refreshToken())
+                .expiresIn(tokens.accessExpire())
                 .userInfo(userInfo)
                 .build();
     }
@@ -170,9 +212,21 @@ public class AuthServiceImpl implements AuthService {
         }
 
         Long userId = jwtUtil.getUserIdFromToken(refreshToken);
+        String userType = jwtUtil.getUserTypeFromToken(refreshToken);
+        String sessionId = jwtUtil.getSessionIdFromToken(refreshToken);
+        if (userId == null || userType == null || sessionId == null) {
+            throw new BusinessException(ResultCode.TOKEN_INVALID, "refreshToken 已失效，请重新登录");
+        }
+
+        String identityKey = identityKey(userType, userId);
+        String storedToken = stringRedisTemplate.opsForValue().get(REDIS_REFRESH_TOKEN_KEY + identityKey);
+        String storedSessionId = stringRedisTemplate.opsForValue().get(REDIS_SESSION_KEY + identityKey);
+        if (!sessionId.equals(storedSessionId)) {
+            throw new BusinessException(ResultCode.TOKEN_INVALID, "账号已在其他设备登录，请重新登录");
+        }
 
         // 2. 检查 Redis 中的 refreshToken 是否一致
-        String storedToken = stringRedisTemplate.opsForValue().get(REDIS_REFRESH_TOKEN_KEY + userId);
+        // Verify refreshToken against the current identity-scoped Redis session.
         if (storedToken == null || !storedToken.equals(refreshToken)) {
             throw new BusinessException(ResultCode.TOKEN_INVALID, "refreshToken 已失效，请重新登录");
         }
@@ -203,15 +257,11 @@ public class AuthServiceImpl implements AuthService {
         currentUser.setUserType(role.getRoleCode());
         currentUser.setPermissions(permissionCodes);
 
-        String newAccessToken = jwtUtil.createAccessToken(currentUser);
+        String newAccessToken = jwtUtil.createAccessToken(currentUser, sessionId);
         long accessExpire = jwtUtil.getAccessTokenExpire();
 
         // 5. 更新 Redis 中的 accessToken
-        stringRedisTemplate.opsForValue().set(
-                REDIS_ACCESS_TOKEN_KEY + user.getId(),
-                newAccessToken,
-                Duration.ofSeconds(accessExpire)
-        );
+        storeAccessToken(currentUser, newAccessToken, accessExpire);
 
         UserInfoVO userInfo = UserInfoVO.builder()
                 .userId(user.getId())
@@ -233,8 +283,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public void logout(Long userId, String accessToken) {
         // 删除 Redis 中的 token
-        stringRedisTemplate.delete(REDIS_ACCESS_TOKEN_KEY + userId);
-        stringRedisTemplate.delete(REDIS_REFRESH_TOKEN_KEY + userId);
+        deleteIdentityTokens(jwtUtil.getUserTypeFromToken(accessToken), userId);
         log.info("用户登出: userId={}", userId);
     }
 
@@ -286,8 +335,7 @@ public class AuthServiceImpl implements AuthService {
         sysUserMapper.updateById(user);
 
         // 清除 Redis 中的 token，强制重新登录
-        stringRedisTemplate.delete(REDIS_ACCESS_TOKEN_KEY + userId);
-        stringRedisTemplate.delete(REDIS_REFRESH_TOKEN_KEY + userId);
+        deletePossibleIdentityTokens(userId);
 
         log.info("用户修改密码: userId={}", userId);
     }
@@ -327,15 +375,7 @@ public class AuthServiceImpl implements AuthService {
             currentUser.setDealerId(worker.getDealerId());
             currentUser.setPermissions(new HashSet<>());
 
-            String accessToken = jwtUtil.createAccessToken(currentUser);
-            String refreshToken = jwtUtil.createRefreshToken(currentUser);
-
-            long accessExpire = jwtUtil.getAccessTokenExpire();
-            long refreshExpire = jwtUtil.getRefreshTokenExpire();
-            stringRedisTemplate.opsForValue().set(
-                    REDIS_ACCESS_TOKEN_KEY + worker.getId(), accessToken, Duration.ofSeconds(accessExpire));
-            stringRedisTemplate.opsForValue().set(
-                    REDIS_REFRESH_TOKEN_KEY + worker.getId(), refreshToken, Duration.ofSeconds(refreshExpire));
+            TokenPair tokens = issueTokens(currentUser);
 
             UserInfoVO userInfo = UserInfoVO.builder()
                     .userId(worker.getId())
@@ -350,9 +390,9 @@ public class AuthServiceImpl implements AuthService {
             log.info("[Auth] 微信运维人员登录成功: workerId={}, openId={}", worker.getId(), openId);
 
             return LoginVO.builder()
-                    .accessToken(accessToken)
-                    .refreshToken(refreshToken)
-                    .expiresIn(accessExpire)
+                    .accessToken(tokens.accessToken())
+                    .refreshToken(tokens.refreshToken())
+                    .expiresIn(tokens.accessExpire())
                     .userInfo(userInfo)
                     .build();
         }
@@ -395,16 +435,9 @@ public class AuthServiceImpl implements AuthService {
         currentUser.setPermissions(new HashSet<>());
 
         // 8. 生成 JWT
-        String accessToken = jwtUtil.createAccessToken(currentUser);
-        String refreshToken = jwtUtil.createRefreshToken(currentUser);
+        TokenPair tokens = issueTokens(currentUser);
 
         // 9. 存入 Redis
-        long accessExpire = jwtUtil.getAccessTokenExpire();
-        long refreshExpire = jwtUtil.getRefreshTokenExpire();
-        stringRedisTemplate.opsForValue().set(
-                REDIS_ACCESS_TOKEN_KEY + customer.getId(), accessToken, Duration.ofSeconds(accessExpire));
-        stringRedisTemplate.opsForValue().set(
-                REDIS_REFRESH_TOKEN_KEY + customer.getId(), refreshToken, Duration.ofSeconds(refreshExpire));
 
         // 10. 构建返回
         UserInfoVO userInfo = UserInfoVO.builder()
@@ -419,9 +452,9 @@ public class AuthServiceImpl implements AuthService {
         log.info("[Auth] 微信用户登录成功: customerId={}, openId={}, userType={}", customer.getId(), openId, userType);
 
         return LoginVO.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .expiresIn(accessExpire)
+                .accessToken(tokens.accessToken())
+                .refreshToken(tokens.refreshToken())
+                .expiresIn(tokens.accessExpire())
                 .userInfo(userInfo)
                 .build();
     }
@@ -513,16 +546,9 @@ public class AuthServiceImpl implements AuthService {
         currentUser.setPermissions(new HashSet<>());
 
         // 5. 生成 JWT
-        String accessToken = jwtUtil.createAccessToken(currentUser);
-        String refreshToken = jwtUtil.createRefreshToken(currentUser);
+        TokenPair tokens = issueTokens(currentUser);
 
         // 6. 存入 Redis
-        long accessExpire = jwtUtil.getAccessTokenExpire();
-        long refreshExpire = jwtUtil.getRefreshTokenExpire();
-        stringRedisTemplate.opsForValue().set(
-                REDIS_ACCESS_TOKEN_KEY + customer.getId(), accessToken, Duration.ofSeconds(accessExpire));
-        stringRedisTemplate.opsForValue().set(
-                REDIS_REFRESH_TOKEN_KEY + customer.getId(), refreshToken, Duration.ofSeconds(refreshExpire));
 
         // 7. 判断是否首次登录（password_changed=false 表示还没改过初始密码）
         boolean firstLogin = customer.getPasswordChanged() == null || !customer.getPasswordChanged();
@@ -541,9 +567,9 @@ public class AuthServiceImpl implements AuthService {
                 customer.getId(), dto.getPhone(), firstLogin);
 
         return LoginVO.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .expiresIn(accessExpire)
+                .accessToken(tokens.accessToken())
+                .refreshToken(tokens.refreshToken())
+                .expiresIn(tokens.accessExpire())
                 .userInfo(userInfo)
                 .firstLogin(firstLogin)
                 .build();
@@ -567,8 +593,7 @@ public class AuthServiceImpl implements AuthService {
         customerMapper.updateById(customer);
 
         // 清除 Redis 中的 token，强制重新登录
-        stringRedisTemplate.delete(REDIS_ACCESS_TOKEN_KEY + customerId);
-        stringRedisTemplate.delete(REDIS_REFRESH_TOKEN_KEY + customerId);
+        deletePossibleIdentityTokens(customerId);
 
         log.info("[Auth] 客户修改密码成功: customerId={}", customerId);
     }
@@ -604,16 +629,9 @@ public class AuthServiceImpl implements AuthService {
         currentUser.setPermissions(new HashSet<>());
 
         // 5. 生成 JWT
-        String accessToken = jwtUtil.createAccessToken(currentUser);
-        String refreshToken = jwtUtil.createRefreshToken(currentUser);
+        TokenPair tokens = issueTokens(currentUser);
 
         // 6. 存入 Redis
-        long accessExpire = jwtUtil.getAccessTokenExpire();
-        long refreshExpire = jwtUtil.getRefreshTokenExpire();
-        stringRedisTemplate.opsForValue().set(
-                REDIS_ACCESS_TOKEN_KEY + worker.getId(), accessToken, Duration.ofSeconds(accessExpire));
-        stringRedisTemplate.opsForValue().set(
-                REDIS_REFRESH_TOKEN_KEY + worker.getId(), refreshToken, Duration.ofSeconds(refreshExpire));
 
         // 7. 判断是否首次登录
         boolean firstLogin = worker.getPasswordChanged() == null || !worker.getPasswordChanged();
@@ -633,9 +651,9 @@ public class AuthServiceImpl implements AuthService {
                 worker.getId(), dto.getPhone(), firstLogin);
 
         return LoginVO.builder()
-                .accessToken(accessToken)
-                .refreshToken(refreshToken)
-                .expiresIn(accessExpire)
+                .accessToken(tokens.accessToken())
+                .refreshToken(tokens.refreshToken())
+                .expiresIn(tokens.accessExpire())
                 .userInfo(userInfo)
                 .firstLogin(firstLogin)
                 .build();
@@ -659,8 +677,7 @@ public class AuthServiceImpl implements AuthService {
         workerMapper.updateById(worker);
 
         // 清除 Redis 中的 token，强制重新登录
-        stringRedisTemplate.delete(REDIS_ACCESS_TOKEN_KEY + workerId);
-        stringRedisTemplate.delete(REDIS_REFRESH_TOKEN_KEY + workerId);
+        deletePossibleIdentityTokens(workerId);
 
         log.info("[Auth] 运维人员修改密码成功: workerId={}", workerId);
     }

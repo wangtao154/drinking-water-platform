@@ -49,14 +49,14 @@ public class CurrentUser implements Serializable {
      * 判断是否拥有某权限
      */
     public boolean hasPermission(String permission) {
-        return permissions != null && permissions.contains(permission);
+        return permissions != null && (permissions.contains("*") || permissions.contains(permission));
     }
 
     /**
      * 判断是否为超级管理员
      */
     public boolean isAdmin() {
-        return "ADMIN".equals(userType);
+        return "SUPER_ADMIN".equals(userType) || "ADMIN".equals(userType);
     }
 
     /**

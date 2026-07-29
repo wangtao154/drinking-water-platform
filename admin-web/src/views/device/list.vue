@@ -138,7 +138,7 @@
         <el-table-column prop="customerName" label="绑定客户" min-width="140" show-overflow-tooltip />
         <el-table-column label="入库时间" min-width="170">
           <template #default="{ row }">
-            {{ formatDateTime(row.updatedAt || row.createdAt, 'YYYY-MM-DD HH:mm:ss') }}
+            {{ row.createdAt ? formatDateTime(row.createdAt, 'YYYY-MM-DD HH:mm:ss') : '-' }}
           </template>
         </el-table-column>
         <el-table-column label="激活时间" min-width="170">

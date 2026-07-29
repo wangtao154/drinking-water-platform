@@ -271,6 +271,38 @@ export interface OrderStatisticsVO {
   refundAmount: number
 }
 
+export interface ScanOrderVO {
+  id: number
+  orderNo: string
+  customerId?: number
+  deviceId?: string
+  sn?: string
+  targetMl: number
+  payAmount: number
+  payStatus: string
+  dispenseStatus: string
+  commandStatus: string
+  q74Payload?: string
+  transactionId?: string
+  paymentProvider?: string
+  mockPayment?: boolean
+  paidAt?: string
+  commandSentAt?: string
+  completedAt?: string
+  remark?: string
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface ScanOrderStatsVO {
+  total: number
+  paid: number
+  pending: number
+  dispatched: number
+  sent: number
+  totalAmount: number
+}
+
 // ===== Payment =====
 export interface PaymentVO {
   id: number
@@ -383,12 +415,17 @@ export interface InventoryStatisticsVO {
 // ===== Monitor =====
 export interface AlertVO {
   id: number
-  deviceSn: string
+  deviceId?: string
+  sn: string
   alertType: string
   alertLevel: string
-  alertContent: string
+  alertMessage: string
+  pushStatus?: string
   handledStatus: string
-  handledBy?: string
+  autoWorkOrderId?: number
+  relatedFilterId?: string
+  triggeredAt?: string
+  pushedAt?: string
   handledAt?: string
   createdAt: string
 }
@@ -520,6 +557,21 @@ export interface SysRoleVO {
   status: string
   createdAt: string
   updatedAt: string
+}
+
+export interface SysPermissionVO {
+  id: number
+  permissionCode: string
+  permissionName: string
+  permissionType: 'MENU' | 'BUTTON' | 'API' | string
+  parentId?: number
+  path?: string
+  icon?: string
+  sortOrder?: number
+  status: string
+  createdAt?: string
+  updatedAt?: string
+  children?: SysPermissionVO[]
 }
 
 // ===== 系统账户 =====

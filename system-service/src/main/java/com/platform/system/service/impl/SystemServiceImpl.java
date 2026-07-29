@@ -11,23 +11,30 @@ import com.platform.system.dto.AccountUpdateDTO;
 import com.platform.system.dto.ConfigUpdateDTO;
 import com.platform.system.dto.MqttConfigUpdateDTO;
 import com.platform.system.dto.RoleCreateDTO;
+import com.platform.system.dto.RolePermissionUpdateDTO;
 import com.platform.system.entity.AuditLog;
 import com.platform.system.entity.SysAccount;
 import com.platform.system.entity.SysConfig;
+import com.platform.system.entity.SysPermission;
 import com.platform.system.entity.SysRole;
+import com.platform.system.entity.SysRolePermission;
 import com.platform.system.feign.IotServiceClient;
 import com.platform.system.mapper.AuditLogMapper;
 import com.platform.system.mapper.SysAccountMapper;
 import com.platform.system.mapper.SysConfigMapper;
+import com.platform.system.mapper.SysPermissionMapper;
 import com.platform.system.mapper.SysRoleMapper;
+import com.platform.system.mapper.SysRolePermissionMapper;
 import com.platform.system.service.SystemService;
 import com.platform.system.vo.AuditLogVO;
 import com.platform.system.vo.MqttConfigVO;
 import com.platform.system.vo.SysAccountVO;
 import com.platform.system.vo.SysConfigVO;
+import com.platform.system.vo.SysPermissionVO;
 import com.platform.system.vo.SysRoleVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,8 +44,12 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -52,6 +63,8 @@ public class SystemServiceImpl implements SystemService {
     private final SysConfigMapper sysConfigMapper;
     private final AuditLogMapper auditLogMapper;
     private final SysRoleMapper sysRoleMapper;
+    private final SysPermissionMapper sysPermissionMapper;
+    private final SysRolePermissionMapper sysRolePermissionMapper;
     private final SysAccountMapper sysAccountMapper;
     private final IotServiceClient iotServiceClient;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
@@ -189,7 +202,92 @@ public class SystemServiceImpl implements SystemService {
             throw new BusinessException(ResultCode.NOT_FOUND, "角色不存在");
         }
         sysRoleMapper.deleteById(id);
+        sysRolePermissionMapper.deleteByRoleId(id);
         log.info("[系统角色] 删除角色: id={}, code={}", id, entity.getRoleCode());
+    }
+
+    @Override
+    public List<SysPermissionVO> permissionTree() {
+        LambdaQueryWrapper<SysPermission> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysPermission::getStatus, "ENABLED")
+                .orderByAsc(SysPermission::getParentId)
+                .orderByAsc(SysPermission::getSortOrder)
+                .orderByAsc(SysPermission::getId);
+
+        List<SysPermissionVO> nodes = sysPermissionMapper.selectList(wrapper).stream()
+                .map(SysPermissionVO::fromEntity)
+                .collect(Collectors.toList());
+        Map<Long, SysPermissionVO> nodeMap = nodes.stream()
+                .collect(Collectors.toMap(SysPermissionVO::getId, n -> n, (a, b) -> a, LinkedHashMap::new));
+        List<SysPermissionVO> roots = new ArrayList<>();
+
+        for (SysPermissionVO node : nodes) {
+            Long parentId = node.getParentId();
+            if (parentId == null || parentId == 0 || !nodeMap.containsKey(parentId)) {
+                roots.add(node);
+            } else {
+                nodeMap.get(parentId).getChildren().add(node);
+            }
+        }
+
+        sortPermissionTree(roots);
+        return roots;
+    }
+
+    @Override
+    public List<Long> getRolePermissionIds(Long roleId) {
+        ensureRoleExists(roleId);
+        return sysRolePermissionMapper.selectPermissionIdsByRoleId(roleId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateRolePermissions(Long roleId, RolePermissionUpdateDTO dto) {
+        SysRole role = ensureRoleExists(roleId);
+        sysRolePermissionMapper.deleteByRoleId(roleId);
+
+        List<Long> permissionIds = dto.getPermissionIds() == null
+                ? List.of()
+                : dto.getPermissionIds().stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+
+        if (!permissionIds.isEmpty()) {
+            List<SysPermission> permissions = sysPermissionMapper.selectBatchIds(permissionIds);
+            if (permissions.size() != permissionIds.size()) {
+                throw new BusinessException(ResultCode.PARAM_INVALID, "存在无效权限ID");
+            }
+
+            for (Long permissionId : permissionIds) {
+                SysRolePermission relation = new SysRolePermission();
+                relation.setRoleId(roleId);
+                relation.setPermissionId(permissionId);
+                sysRolePermissionMapper.insert(relation);
+            }
+        }
+
+        log.info("[系统角色] 更新角色权限: roleId={}, code={}, count={}",
+                roleId, role.getRoleCode(), permissionIds.size());
+    }
+
+    private SysRole ensureRoleExists(Long roleId) {
+        SysRole role = sysRoleMapper.selectById(roleId);
+        if (role == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "角色不存在");
+        }
+        return role;
+    }
+
+    private void sortPermissionTree(List<SysPermissionVO> nodes) {
+        nodes.sort(Comparator
+                .comparing((SysPermissionVO n) -> n.getSortOrder() == null ? 0 : n.getSortOrder())
+                .thenComparing(n -> n.getId() == null ? 0L : n.getId()));
+        for (SysPermissionVO node : nodes) {
+            if (node.getChildren() != null && !node.getChildren().isEmpty()) {
+                sortPermissionTree(node.getChildren());
+            }
+        }
     }
 
     // ==================== 账户管理 ====================
@@ -233,12 +331,12 @@ public class SystemServiceImpl implements SystemService {
         LambdaQueryWrapper<SysAccount> check = new LambdaQueryWrapper<>();
         check.eq(SysAccount::getUsername, dto.getUsername());
         if (sysAccountMapper.selectCount(check) > 0) {
-            throw new BusinessException(ResultCode.DATA_DUPLICATE, "用户名已存在: " + dto.getUsername());
+            throw new BusinessException(ResultCode.DATA_DUPLICATE, "用户名已存在，请更换后再添加: " + dto.getUsername());
         }
         check = new LambdaQueryWrapper<>();
         check.eq(SysAccount::getEmployeeNo, dto.getEmployeeNo());
         if (sysAccountMapper.selectCount(check) > 0) {
-            throw new BusinessException(ResultCode.DATA_DUPLICATE, "工号已存在: " + dto.getEmployeeNo());
+            throw new BusinessException(ResultCode.DATA_DUPLICATE, "工号已存在，请更换后再添加: " + dto.getEmployeeNo());
         }
         SysAccount entity = new SysAccount();
         entity.setEmployeeNo(dto.getEmployeeNo());
@@ -250,8 +348,12 @@ public class SystemServiceImpl implements SystemService {
         entity.setEmail(dto.getEmail());
         entity.setDepartment(dto.getDepartment());
         entity.setStatus("ENABLED");
-        sysAccountMapper.insert(entity);
-        log.info("[系统账户] 新建账户: {}", dto.getUsername());
+        try {
+            sysAccountMapper.insert(entity);
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(ResultCode.DATA_DUPLICATE, "用户名或工号已存在，请更换后再添加");
+        }
+        log.info("[系统账户] 新增账户: {}", dto.getUsername());
         return SysAccountVO.fromEntity(entity);
     }
 

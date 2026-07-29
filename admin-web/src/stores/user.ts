@@ -32,8 +32,9 @@ export const useUserStore = defineStore('user', () => {
     const res = await getCurrentUser()
     if (res.data) {
       userInfo.value = res.data
-      permissions.value = (res.data as any).permissions || permissions.value
-      roles.value = (res.data as any).roles || roles.value
+      const info = res.data as any
+      permissions.value = info.permissions || permissions.value
+      roles.value = info.roles || (info.roleCode ? [info.roleCode] : roles.value)
     }
     return res
   }
@@ -57,7 +58,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   function hasPermission(perm: string): boolean {
-    if (roles.value.includes('admin')) return true
+    if (permissions.value.includes('*') || roles.value.includes('SUPER_ADMIN')) return true
     return permissions.value.includes(perm)
   }
 

@@ -29,6 +29,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/**")
                 .excludePathPatterns(
                         "/actuator/**",
+                        "/api/v1/water/pay/wechat/notify",
+                        "/api/v1/water/scan-orders/price-preview",
                         "/error"
                 );
     }

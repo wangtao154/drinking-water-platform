@@ -15,6 +15,9 @@ public class WaterDispenseCreateDTO {
     @Min(value = 1, message = "目标出水量必须大于0")
     private Long targetMl;
 
+    /**
+     * Deprecated: scan-water amount is calculated by the backend.
+     */
     @Min(value = 1, message = "支付金额必须大于0")
     private Long payAmount;
 

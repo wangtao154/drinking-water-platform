@@ -48,14 +48,14 @@
     <el-card shadow="never" class="search-card">
       <el-form class="search-form" :inline="true" :model="searchForm">
         <el-form-item label="告警级别">
-          <el-select v-model="searchForm.level" placeholder="全部" clearable>
-            <el-option label="严重" value="CRITICAL" />
+          <el-select v-model="searchForm.alertLevel" placeholder="全部" clearable>
+            <el-option label="报警" value="ALARM" />
             <el-option label="警告" value="WARNING" />
             <el-option label="信息" value="INFO" />
           </el-select>
         </el-form-item>
         <el-form-item label="处理状态">
-          <el-select v-model="searchForm.handleStatus" placeholder="全部" clearable>
+          <el-select v-model="searchForm.handledStatus" placeholder="全部" clearable>
             <el-option label="未处理" value="UNHANDLED" />
             <el-option label="已处理" value="HANDLED" />
           </el-select>
@@ -70,22 +70,28 @@
     <!-- 表格 -->
     <el-card>
       <el-table :data="tableData" stripe border>
-        <el-table-column prop="deviceSn" label="设备SN" min-width="140" />
-        <el-table-column prop="alertType" label="告警类型" min-width="120" />
-        <el-table-column prop="level" label="级别" min-width="100">
+        <el-table-column prop="sn" label="设备SN" min-width="140" />
+        <el-table-column prop="alertType" label="告警类型" min-width="120">
           <template #default="{ row }">
-            <el-tag :type="statusTagType(row.level)">{{ statusLabel(row.level) }}</el-tag>
+            {{ alertTypeLabel(row.alertType) }}
           </template>
         </el-table-column>
-        <el-table-column prop="content" label="内容" min-width="200" />
-        <el-table-column prop="handleStatus" label="处理状态" min-width="100">
+        <el-table-column prop="alertLevel" label="级别" min-width="100">
           <template #default="{ row }">
-            <el-tag :type="row.handleStatus === 'HANDLED' ? 'success' : 'warning'">
-              {{ row.handleStatus === 'HANDLED' ? '已处理' : '未处理' }}
+            <el-tag :type="statusTagType(row.alertLevel)">{{ statusLabel(row.alertLevel) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="alertMessage" label="内容" min-width="200" />
+        <el-table-column prop="handledStatus" label="处理状态" min-width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.handledStatus === 'HANDLED' ? 'success' : 'warning'">
+              {{ row.handledStatus === 'HANDLED' ? '已处理' : '未处理' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="handler" label="处理人" min-width="100" />
+        <el-table-column prop="handledBy" label="处理人" min-width="100">
+          <template #default="{ row }">{{ row.handledBy || '-' }}</template>
+        </el-table-column>
         <el-table-column prop="handledAt" label="处理时间" min-width="120">
           <template #default="{ row }">{{ formatDateTime(row.handledAt) }}</template>
         </el-table-column>
@@ -95,7 +101,7 @@
         <el-table-column label="操作" width="100" fixed="right">
           <template #default="{ row }">
             <el-button
-              v-if="row.handleStatus === 'UNHANDLED'"
+              v-if="row.handledStatus === 'UNHANDLED'"
               type="primary"
               link
               size="small"
@@ -144,7 +150,7 @@ const showHandleDialog = ref(false)
 const handleRemark = ref('')
 const currentRow = ref<AlertVO | null>(null)
 
-const searchForm = reactive({ level: '', handleStatus: '' })
+const searchForm = reactive({ alertLevel: '', handledStatus: '' })
 const pagination = reactive({ pageNum: 1, pageSize: 10, total: 0 })
 
 async function loadStats() {
@@ -161,8 +167,8 @@ async function loadData() {
     const res = await pageAlerts({
       pageNum: pagination.pageNum,
       pageSize: pagination.pageSize,
-      level: searchForm.level || undefined,
-      handleStatus: searchForm.handleStatus || undefined,
+      alertLevel: searchForm.alertLevel || undefined,
+      handledStatus: searchForm.handledStatus || undefined,
     })
     tableData.value = res.data.records
     pagination.total = res.data.total
@@ -177,8 +183,8 @@ function handleSearch() {
 }
 
 function handleReset() {
-  searchForm.level = ''
-  searchForm.handleStatus = ''
+  searchForm.alertLevel = ''
+  searchForm.handledStatus = ''
   pagination.pageNum = 1
   loadData()
 }
@@ -209,6 +215,20 @@ onMounted(() => {
   loadStats()
   loadData()
 })
+
+function alertTypeLabel(type: string) {
+  const map: Record<string, string> = {
+    DEVICE_FAULT: '设备故障',
+    WATER_SHORTAGE: '缺水告警',
+    WATER_LEAK: '漏水告警',
+    LOW_VOLTAGE: '低电压预警',
+    WATER_QUALITY: '水质告警',
+    FILTER_EXPIRE: '滤芯到期',
+    FLOW_EXPIRE: '流量到期',
+    RENT_EXPIRE: '租期到期'
+  }
+  return map[type] || type || '-'
+}
 </script>
 
 <style scoped lang="scss">

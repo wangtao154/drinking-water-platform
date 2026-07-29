@@ -46,14 +46,21 @@ public class JwtUtil {
         List<String> permList = currentUser.getPermissions() != null
                 ? List.copyOf(currentUser.getPermissions()) : null;
         return buildToken(currentUser.getUserId(), currentUser.getUserName(), currentUser.getUserType(),
-                permList, accessExpireSeconds, "ACCESS");
+                permList, null, accessExpireSeconds, "ACCESS");
+    }
+
+    public String createAccessToken(CurrentUser currentUser, String sessionId) {
+        List<String> permList = currentUser.getPermissions() != null
+                ? List.copyOf(currentUser.getPermissions()) : null;
+        return buildToken(currentUser.getUserId(), currentUser.getUserName(), currentUser.getUserType(),
+                permList, sessionId, accessExpireSeconds, "ACCESS");
     }
 
     /**
      * 签发 Access Token
      */
     public String createAccessToken(Long userId, String userType, List<String> permissions) {
-        return buildToken(userId, null, userType, permissions, accessExpireSeconds, "ACCESS");
+        return buildToken(userId, null, userType, permissions, null, accessExpireSeconds, "ACCESS");
     }
 
     /**
@@ -61,18 +68,23 @@ public class JwtUtil {
      */
     public String createRefreshToken(CurrentUser currentUser) {
         return buildToken(currentUser.getUserId(), currentUser.getUserName(), currentUser.getUserType(),
-                null, refreshExpireSeconds, "REFRESH");
+                null, null, refreshExpireSeconds, "REFRESH");
+    }
+
+    public String createRefreshToken(CurrentUser currentUser, String sessionId) {
+        return buildToken(currentUser.getUserId(), currentUser.getUserName(), currentUser.getUserType(),
+                null, sessionId, refreshExpireSeconds, "REFRESH");
     }
 
     /**
      * 签发 Refresh Token
      */
     public String createRefreshToken(Long userId, String userType) {
-        return buildToken(userId, null, userType, null, refreshExpireSeconds, "REFRESH");
+        return buildToken(userId, null, userType, null, null, refreshExpireSeconds, "REFRESH");
     }
 
     private String buildToken(Long userId, String userName, String userType, List<String> permissions,
-                              Long expireSeconds, String tokenType) {
+                              String sessionId, Long expireSeconds, String tokenType) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expireSeconds * 1000);
 
@@ -88,6 +100,9 @@ public class JwtUtil {
 
         if (permissions != null && !permissions.isEmpty()) {
             builder.claim("permissions", permissions);
+        }
+        if (sessionId != null && !sessionId.isBlank()) {
+            builder.claim("sessionId", sessionId);
         }
 
         return builder.compact();
@@ -144,6 +159,11 @@ public class JwtUtil {
     public String getUserTypeFromToken(String token) {
         Claims claims = parseToken(token);
         return claims != null ? claims.get("userType", String.class) : null;
+    }
+
+    public String getSessionIdFromToken(String token) {
+        Claims claims = parseToken(token);
+        return claims != null ? claims.get("sessionId", String.class) : null;
     }
 
     /**
