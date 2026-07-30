@@ -27,6 +27,8 @@ public class WaterDispenseOrder extends BaseEntity {
 
     private Long targetMl;
 
+    private Integer waterType;
+
     private Long payAmount;
 
     private String payStatus;

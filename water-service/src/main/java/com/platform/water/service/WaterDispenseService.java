@@ -14,7 +14,7 @@ public interface WaterDispenseService {
 
     WaterDispenseOrderVO createOrder(WaterDispenseCreateDTO dto);
 
-    WaterDispensePricePreviewVO previewPrice(Long targetMl);
+    WaterDispensePricePreviewVO previewPrice(Long targetMl, Integer waterType);
 
     WaterWechatPayVO prepareWechatPay(String orderNo);
 
@@ -24,7 +24,7 @@ public interface WaterDispenseService {
 
     PageResult<WaterDispenseOrderVO> pageOrders(WaterDispenseOrderPageQueryDTO query);
 
-    WaterDispenseOrderStatsVO getOrderStats();
+    WaterDispenseOrderStatsVO getOrderStats(WaterDispenseOrderPageQueryDTO query);
 
     Q74ProtocolVO previewQ74(Q74PreviewDTO dto);
 }

@@ -9,5 +9,7 @@ public class WaterDispensePricePreviewVO {
 
     private Long targetMl;
 
+    private Integer waterType;
+
     private Long payAmount;
 }

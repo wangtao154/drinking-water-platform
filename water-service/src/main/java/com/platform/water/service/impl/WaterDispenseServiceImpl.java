@@ -88,7 +88,8 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
         order.setDeviceId(device.getDeviceId());
         order.setSn(device.getSn());
         order.setTargetMl(validateTargetMl(dto.getTargetMl()));
-        order.setPayAmount(calculatePayAmount(order.getTargetMl()));
+        order.setWaterType(validateWaterType(dto.getWaterType()));
+        order.setPayAmount(calculatePayAmount(order.getTargetMl(), order.getWaterType()));
         order.setPayStatus(PAY_PENDING);
         order.setDispenseStatus(DISPENSE_PENDING_PAY);
         order.setCommandStatus(COMMAND_PENDING);
@@ -98,15 +99,17 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
         orderMapper.insert(order);
         appendEvent(order.getOrderNo(), "ORDER_CREATED", "SUCCESS", "scan water order created", null);
 
-        log.info("Water dispense order created: orderNo={}, sn={}, targetMl={}, amount={}",
-                order.getOrderNo(), order.getSn(), order.getTargetMl(), order.getPayAmount());
+        log.info("Water dispense order created: orderNo={}, sn={}, targetMl={}, waterType={}, amount={}",
+                order.getOrderNo(), order.getSn(), order.getTargetMl(), order.getWaterType(), order.getPayAmount());
         return WaterDispenseOrderVO.fromEntity(order);
     }
 
     @Override
-    public WaterDispensePricePreviewVO previewPrice(Long targetMl) {
+    public WaterDispensePricePreviewVO previewPrice(Long targetMl, Integer waterType) {
         Long normalizedTargetMl = validateTargetMl(targetMl);
-        return new WaterDispensePricePreviewVO(normalizedTargetMl, calculatePayAmount(normalizedTargetMl));
+        Integer normalizedWaterType = validateWaterType(waterType);
+        return new WaterDispensePricePreviewVO(normalizedTargetMl, normalizedWaterType,
+                calculatePayAmount(normalizedTargetMl, normalizedWaterType));
     }
 
     @Override
@@ -176,7 +179,7 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
 
         String payload = StringUtils.hasText(order.getQ74Payload())
                 ? order.getQ74Payload()
-                : buildQ74Payload("START", order.getTargetMl());
+                : buildQ74Payload("START", order.getTargetMl(), order.getWaterType());
 
         orderMapper.update(null, new LambdaUpdateWrapper<WaterDispenseOrder>()
                 .eq(WaterDispenseOrder::getOrderNo, orderNo)
@@ -189,7 +192,7 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
                 .set(WaterDispenseOrder::getQ74Payload, payload));
         appendEvent(orderNo, "WECHAT_PAYMENT_SUCCESS", "SUCCESS", "wechat payment success", summary);
 
-        dispatchQ74AfterPay(orderNo, order.getSn(), order.getTargetMl(), payload);
+        dispatchQ74AfterPay(orderNo, order.getSn(), order.getTargetMl(), order.getWaterType(), payload);
     }
 
     @Override
@@ -206,7 +209,9 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
                 .eq(StringUtils.hasText(query.getSn()), WaterDispenseOrder::getSn, query.getSn())
                 .eq(StringUtils.hasText(query.getPayStatus()), WaterDispenseOrder::getPayStatus, query.getPayStatus())
                 .eq(StringUtils.hasText(query.getDispenseStatus()), WaterDispenseOrder::getDispenseStatus, query.getDispenseStatus())
-                .eq(StringUtils.hasText(query.getCommandStatus()), WaterDispenseOrder::getCommandStatus, query.getCommandStatus());
+                .eq(StringUtils.hasText(query.getCommandStatus()), WaterDispenseOrder::getCommandStatus, query.getCommandStatus())
+                .ge(query.getPaidStartTime() != null, WaterDispenseOrder::getPaidAt, query.getPaidStartTime())
+                .le(query.getPaidEndTime() != null, WaterDispenseOrder::getPaidAt, query.getPaidEndTime());
         if (StringUtils.hasText(query.getKeyword())) {
             String keyword = query.getKeyword().trim();
             wrapper.and(w -> w.like(WaterDispenseOrder::getOrderNo, keyword)
@@ -222,15 +227,31 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
     }
 
     @Override
-    public WaterDispenseOrderStatsVO getOrderStats() {
-        List<Map<String, Object>> rows = orderMapper.selectMaps(new QueryWrapper<WaterDispenseOrder>()
+    public WaterDispenseOrderStatsVO getOrderStats(WaterDispenseOrderPageQueryDTO query) {
+        query.normalize();
+        QueryWrapper<WaterDispenseOrder> wrapper = new QueryWrapper<WaterDispenseOrder>()
                 .select(
                         "COUNT(*) AS total",
                         "SUM(CASE WHEN pay_status = 'SUCCESS' THEN 1 ELSE 0 END) AS paid",
                         "SUM(CASE WHEN pay_status = 'PENDING' THEN 1 ELSE 0 END) AS pending",
                         "SUM(CASE WHEN dispense_status = 'DISPATCHED' THEN 1 ELSE 0 END) AS dispatched",
                         "SUM(CASE WHEN command_status = 'SENT' THEN 1 ELSE 0 END) AS sent",
-                        "COALESCE(SUM(CASE WHEN pay_status = 'SUCCESS' THEN pay_amount ELSE 0 END), 0) AS totalAmount"));
+                        "COALESCE(SUM(CASE WHEN pay_status = 'SUCCESS' THEN pay_amount ELSE 0 END), 0) AS totalAmount");
+        wrapper.eq(StringUtils.hasText(query.getOrderNo()), "order_no", query.getOrderNo())
+                .eq(StringUtils.hasText(query.getSn()), "sn", query.getSn())
+                .eq(StringUtils.hasText(query.getPayStatus()), "pay_status", query.getPayStatus())
+                .eq(StringUtils.hasText(query.getDispenseStatus()), "dispense_status", query.getDispenseStatus())
+                .eq(StringUtils.hasText(query.getCommandStatus()), "command_status", query.getCommandStatus())
+                .ge(query.getPaidStartTime() != null, "paid_at", query.getPaidStartTime())
+                .le(query.getPaidEndTime() != null, "paid_at", query.getPaidEndTime());
+        if (StringUtils.hasText(query.getKeyword())) {
+            String keyword = query.getKeyword().trim();
+            wrapper.and(w -> w.like("order_no", keyword)
+                    .or().like("sn", keyword)
+                    .or().like("device_id", keyword)
+                    .or().like("transaction_id", keyword));
+        }
+        List<Map<String, Object>> rows = orderMapper.selectMaps(wrapper);
         Map<String, Object> row = rows.isEmpty() ? Map.of() : rows.get(0);
         WaterDispenseOrderStatsVO vo = new WaterDispenseOrderStatsVO();
         vo.setTotal(toLong(row.get("total")));
@@ -244,11 +265,12 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
 
     @Override
     public Q74ProtocolVO previewQ74(Q74PreviewDTO dto) {
-        return new Q74ProtocolVO(properties.getCommandPoint(), buildQ74Payload(dto.getAction(), dto.getTargetMl()));
+        return new Q74ProtocolVO(properties.getCommandPoint(),
+                buildQ74Payload(dto.getAction(), dto.getTargetMl(), dto.getWaterType()));
     }
 
-    private void dispatchQ74AfterPay(String orderNo, String sn, Long targetMl, String payload) {
-        String commandPayload = StringUtils.hasText(payload) ? payload : buildQ74Payload("START", targetMl);
+    private void dispatchQ74AfterPay(String orderNo, String sn, Long targetMl, Integer waterType, String payload) {
+        String commandPayload = StringUtils.hasText(payload) ? payload : buildQ74Payload("START", targetMl, waterType);
         sendQ74(sn, commandPayload);
 
         orderMapper.update(null, new LambdaUpdateWrapper<WaterDispenseOrder>()
@@ -271,12 +293,13 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
         }
     }
 
-    private String buildQ74Payload(String action, Long targetMl) {
+    private String buildQ74Payload(String action, Long targetMl, Integer waterType) {
         String normalizedAction = action.trim().toUpperCase(Locale.ROOT);
         if (!normalizedAction.matches("START|STOP|CANCEL")) {
             throw new BusinessException(ResultCode.PARAM_INVALID, "unsupported water scan action: " + action);
         }
         Long normalizedTargetMl = validateTargetMl(targetMl);
+        Integer normalizedWaterType = validateWaterType(waterType);
 
         long ts = Instant.now().getEpochSecond();
         String nonce = UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase(Locale.ROOT);
@@ -284,6 +307,7 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
                 properties.getProtocolVersion(),
                 normalizedAction,
                 String.valueOf(normalizedTargetMl),
+                String.valueOf(normalizedWaterType),
                 String.valueOf(ts),
                 nonce
         );
@@ -292,18 +316,29 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
 
     private Long validateTargetMl(Long targetMl) {
         if (targetMl == null) {
-            throw new BusinessException(ResultCode.PARAM_INVALID, "target water volume is required");
+            throw new BusinessException(ResultCode.PARAM_INVALID, "请输入取水量");
         }
         Long minTargetMl = properties.getMinTargetMl() != null ? properties.getMinTargetMl() : 1L;
         Long maxTargetMl = properties.getMaxTargetMl() != null ? properties.getMaxTargetMl() : 10000L;
         if (targetMl < minTargetMl || targetMl > maxTargetMl) {
             throw new BusinessException(ResultCode.PARAM_INVALID,
-                    "target water volume must be between " + minTargetMl + "ml and " + maxTargetMl + "ml");
+                    "取水量必须在 " + minTargetMl + "ml 到 " + maxTargetMl + "ml 之间");
         }
         return targetMl;
     }
 
-    private Long calculatePayAmount(Long targetMl) {
+    private Integer validateWaterType(Integer waterType) {
+        if (waterType == null) {
+            return 0;
+        }
+        if (waterType != 0 && waterType != 1) {
+            throw new BusinessException(ResultCode.PARAM_INVALID, "出水类型只能选择冷水或热水");
+        }
+        return waterType;
+    }
+
+    private Long calculatePayAmount(Long targetMl, Integer waterType) {
+        validateWaterType(waterType);
         long minPayAmount = properties.getMinPayAmount() != null ? properties.getMinPayAmount() : 1L;
         long unitPriceCentsPerLiter = properties.getUnitPriceCentsPerLiter() != null
                 ? properties.getUnitPriceCentsPerLiter()

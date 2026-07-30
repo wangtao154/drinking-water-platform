@@ -60,6 +60,18 @@
             <el-option label="已发送" value="SENT" />
           </el-select>
         </el-form-item>
+        <el-form-item label="支付时间">
+          <el-date-picker
+            v-model="searchForm.paidAtRange"
+            type="datetimerange"
+            range-separator="至"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            format="YYYY-MM-DD HH:mm:ss"
+            value-format="YYYY-MM-DDTHH:mm:ss"
+            style="width: 380px"
+          />
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleSearch">搜索</el-button>
           <el-button @click="handleReset">重置</el-button>
@@ -160,13 +172,25 @@ const searchForm = reactive({
   payStatus: '',
   dispenseStatus: '',
   commandStatus: '',
+  paidAtRange: [] as string[],
   pageNum: 1,
   pageSize: 10,
 })
 
+function buildSearchParams() {
+  return {
+    keyword: searchForm.keyword || undefined,
+    payStatus: searchForm.payStatus || undefined,
+    dispenseStatus: searchForm.dispenseStatus || undefined,
+    commandStatus: searchForm.commandStatus || undefined,
+    paidStartTime: searchForm.paidAtRange?.[0] || undefined,
+    paidEndTime: searchForm.paidAtRange?.[1] || undefined,
+  }
+}
+
 async function fetchStatistics() {
   try {
-    const res = await getScanOrderStatistics()
+    const res = await getScanOrderStatistics(buildSearchParams())
     if (res.code === 200) {
       Object.assign(statistics, res.data)
     }
@@ -181,10 +205,7 @@ async function fetchData() {
     const res = await pageScanOrders({
       pageNum: searchForm.pageNum,
       pageSize: searchForm.pageSize,
-      keyword: searchForm.keyword || undefined,
-      payStatus: searchForm.payStatus || undefined,
-      dispenseStatus: searchForm.dispenseStatus || undefined,
-      commandStatus: searchForm.commandStatus || undefined,
+      ...buildSearchParams(),
     })
     if (res.code === 200) {
       tableData.value = res.data.records
@@ -206,6 +227,7 @@ function handleReset() {
   searchForm.payStatus = ''
   searchForm.dispenseStatus = ''
   searchForm.commandStatus = ''
+  searchForm.paidAtRange = []
   searchForm.pageNum = 1
   fetchData()
   fetchStatistics()

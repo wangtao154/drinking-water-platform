@@ -41,8 +41,10 @@ public class WaterDispenseController {
     }
 
     @GetMapping("/scan-orders/price-preview")
-    public R<WaterDispensePricePreviewVO> previewPrice(@RequestParam Long targetMl) {
-        return R.ok(waterDispenseService.previewPrice(targetMl));
+    public R<WaterDispensePricePreviewVO> previewPrice(
+            @RequestParam Long targetMl,
+            @RequestParam(required = false) Integer waterType) {
+        return R.ok(waterDispenseService.previewPrice(targetMl, waterType));
     }
 
     @PostMapping("/scan-orders/{orderNo}/wechat-pay")
@@ -61,8 +63,8 @@ public class WaterDispenseController {
     }
 
     @GetMapping("/scan-orders/statistics")
-    public R<WaterDispenseOrderStatsVO> orderStats() {
-        return R.ok(waterDispenseService.getOrderStats());
+    public R<WaterDispenseOrderStatsVO> orderStats(WaterDispenseOrderPageQueryDTO query) {
+        return R.ok(waterDispenseService.getOrderStats(query));
     }
 
     @PostMapping("/protocol/q74/preview")

@@ -278,6 +278,7 @@ export interface ScanOrderVO {
   deviceId?: string
   sn?: string
   targetMl: number
+  waterType?: number
   payAmount: number
   payStatus: string
   dispenseStatus: string

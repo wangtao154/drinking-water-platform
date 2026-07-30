@@ -16,6 +16,11 @@ public class WaterDispenseCreateDTO {
     private Long targetMl;
 
     /**
+     * 0=cold water, 1=hot water.
+     */
+    private Integer waterType;
+
+    /**
      * Deprecated: scan-water amount is calculated by the backend.
      */
     @Min(value = 1, message = "支付金额必须大于0")

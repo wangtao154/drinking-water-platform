@@ -14,6 +14,7 @@ public class WaterDispenseOrderVO {
     private String deviceId;
     private String sn;
     private Long targetMl;
+    private Integer waterType;
     private Long payAmount;
     private String payStatus;
     private String dispenseStatus;
@@ -36,6 +37,7 @@ public class WaterDispenseOrderVO {
         vo.setDeviceId(entity.getDeviceId());
         vo.setSn(entity.getSn());
         vo.setTargetMl(entity.getTargetMl());
+        vo.setWaterType(entity.getWaterType());
         vo.setPayAmount(entity.getPayAmount());
         vo.setPayStatus(entity.getPayStatus());
         vo.setDispenseStatus(entity.getDispenseStatus());

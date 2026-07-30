@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS water_dispense_order (
     device_id        VARCHAR(64)  NOT NULL COMMENT 'Device ID',
     sn               VARCHAR(64)  NOT NULL COMMENT 'Device SN',
     target_ml        BIGINT       NOT NULL COMMENT 'Target water volume in ml',
+    water_type       TINYINT      NOT NULL DEFAULT 0 COMMENT 'Water type: 0=cold, 1=hot',
     pay_amount       BIGINT       NOT NULL DEFAULT 1 COMMENT 'Pay amount in cents',
     pay_status       VARCHAR(32)  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/SUCCESS/FAIL/REFUND',
     dispense_status  VARCHAR(32)  NOT NULL DEFAULT 'PENDING_PAY' COMMENT 'PENDING_PAY/PAID/DISPATCHED/DISPENSING/COMPLETED/FAILED/REFUNDING/REFUNDED',

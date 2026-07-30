@@ -9,10 +9,21 @@ export function pageScanOrders(params: PageQueryDTO & {
   payStatus?: string
   dispenseStatus?: string
   commandStatus?: string
+  paidStartTime?: string
+  paidEndTime?: string
 }) {
   return get<PageResult<ScanOrderVO>>(BASE, params)
 }
 
-export function getScanOrderStatistics() {
-  return get<ScanOrderStatsVO>(`${BASE}/statistics`)
+export function getScanOrderStatistics(params?: {
+  orderNo?: string
+  sn?: string
+  keyword?: string
+  payStatus?: string
+  dispenseStatus?: string
+  commandStatus?: string
+  paidStartTime?: string
+  paidEndTime?: string
+}) {
+  return get<ScanOrderStatsVO>(`${BASE}/statistics`, params)
 }

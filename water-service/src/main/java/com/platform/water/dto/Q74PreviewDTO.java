@@ -14,4 +14,9 @@ public class Q74PreviewDTO {
     @NotNull(message = "目标出水量不能为空")
     @Min(value = 0, message = "目标出水量不能小于0")
     private Long targetMl;
+
+    /**
+     * 0=cold water, 1=hot water.
+     */
+    private Integer waterType;
 }
