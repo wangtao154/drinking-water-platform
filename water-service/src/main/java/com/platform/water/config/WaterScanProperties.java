@@ -21,13 +21,27 @@ public class WaterScanProperties {
     private Long minPayAmount = 1L;
 
     /**
-     * Price in cents per liter. Set to 0 to charge the minimum amount only.
+     * Deprecated fallback price in cents per liter.
      */
     private Long unitPriceCentsPerLiter = 0L;
 
+    /**
+     * Cold water price in cents per liter.
+     */
+    private Long coldUnitPriceCentsPerLiter = 50L;
+
+    /**
+     * Hot water price in cents per liter.
+     */
+    private Long hotUnitPriceCentsPerLiter = 80L;
+
     private Long minTargetMl = 100L;
 
-    private Long maxTargetMl = 10000L;
+    private Long maxTargetMl = 100000L;
 
     private Integer defaultDurationSeconds = 120;
+
+    private Integer commandMaxAttempts = 5;
+
+    private Long commandAckTimeoutMs = 6000L;
 }

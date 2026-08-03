@@ -1,10 +1,12 @@
 package com.platform.iot.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.platform.iot.entity.CommandLog;
 import com.platform.iot.entity.Device;
 import com.platform.iot.mapper.CommandLogMapper;
 import com.platform.iot.mapper.DeviceLookupMapper;
+import com.platform.iot.vo.CommandAckResultVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.MqttClient;
@@ -50,41 +52,163 @@ public class CommandService {
 
         String messageID = UUID.randomUUID().toString();
 
+        CommandLog commandLog = new CommandLog();
+        commandLog.setMessageId(messageID);
+        commandLog.setSn(sn);
+        commandLog.setDeviceId(device.getDeviceId());
+        commandLog.setPointId(pointID);
+        commandLog.setValue(value);
+        commandLog.setStatus("PENDING");
+        commandLog.setOperatorId(operatorId);
+        commandLogMapper.insert(commandLog);
+
         try {
-            // 严格按设备协议构建 payload
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("messageID", messageID);
-            payload.put("pointID", pointID);
-            payload.put("value", value);
-
-            String payloadJson = objectMapper.writeValueAsString(payload);
-            String topic = "api/v2/set/" + sn;
-
-            // 发布到 MQTT，QoS 1
-            MqttMessage mqttMessage = new MqttMessage(payloadJson.getBytes());
-            mqttMessage.setQos(1);
-            mqttClient.publish(topic, mqttMessage);
-
-            // 保存到 command_log
-            CommandLog commandLog = new CommandLog();
-            commandLog.setMessageId(messageID);
-            commandLog.setSn(sn);
-            commandLog.setDeviceId(device.getDeviceId());
-            commandLog.setPointId(pointID);
-            commandLog.setValue(value);
-            commandLog.setStatus("SENT");
-            commandLog.setOperatorId(operatorId);
-            commandLogMapper.insert(commandLog);
-
+            publishSetPayload(sn, pointID, value, messageID);
+            markSentIfPending(messageID);
+            CommandLog current = commandLogMapper.selectByMessageId(messageID);
             log.info("[SET] 配置下发成功 SN={}, topic={}, pointID={}, value={}, messageID={}",
-                    sn, topic, pointID, value, messageID);
-            return commandLog;
+                    sn, "api/v2/set/" + sn, pointID, value, messageID);
+            return current != null ? current : commandLog;
 
         } catch (Exception e) {
+            markFailed(messageID);
             log.error("[SET] 配置下发失败 SN={}, pointID={}, value={}: {}",
                     sn, pointID, value, e.getMessage(), e);
             throw new RuntimeException("Failed to send set command: " + e.getMessage());
         }
+    }
+
+    public CommandAckResultVO sendSetCommandWithAck(String sn, String pointID, String value, Long operatorId,
+                                                    Integer maxAttempts, Long ackTimeoutMs) {
+        int attemptsLimit = maxAttempts != null && maxAttempts > 0 ? maxAttempts : 5;
+        long timeoutMs = ackTimeoutMs != null && ackTimeoutMs > 0 ? ackTimeoutMs : 6000L;
+        CommandAckResultVO result = CommandAckResultVO.pending(attemptsLimit, timeoutMs);
+        Device device = deviceLookupMapper.selectBySn(sn);
+        if (device == null) {
+            throw new RuntimeException("Device not found for SN: " + sn);
+        }
+
+        String messageID = UUID.randomUUID().toString();
+        CommandLog commandLog = new CommandLog();
+        commandLog.setMessageId(messageID);
+        commandLog.setSn(sn);
+        commandLog.setDeviceId(device.getDeviceId());
+        commandLog.setPointId(pointID);
+        commandLog.setValue(value);
+        commandLog.setStatus("PENDING");
+        commandLog.setOperatorId(operatorId);
+        commandLogMapper.insert(commandLog);
+        result.setLastMessageId(messageID);
+
+        for (int attempt = 1; attempt <= attemptsLimit; attempt++) {
+            result.setAttempts(attempt);
+            CommandLog existingAck = commandLogMapper.selectByMessageId(messageID);
+            if (existingAck != null && existingAck.getAckReceivedAt() != null) {
+                return buildAckResult(result, existingAck);
+            }
+
+            try {
+                publishSetPayload(sn, pointID, value, messageID);
+                markSentForRetry(messageID);
+                log.info("[SET] 配置下发等待ACK SN={}, topic={}, pointID={}, attempt={}/{}, messageID={}",
+                        sn, "api/v2/set/" + sn, pointID, attempt, attemptsLimit, messageID);
+            } catch (Exception e) {
+                markFailed(messageID);
+                result.setStatus("FAILED");
+                result.setErrorMessage("Q74下发失败: " + e.getMessage());
+                log.error("[SET] 配置下发失败 SN={}, pointID={}, value={}, attempt={}, messageID={}: {}",
+                        sn, pointID, value, attempt, messageID, e.getMessage(), e);
+                return result;
+            }
+
+            CommandLog ackLog = waitForAck(messageID, timeoutMs);
+            if (ackLog != null && ackLog.getAckReceivedAt() != null) {
+                boolean acknowledged = "ACK".equals(ackLog.getStatus()) || "EXECUTED".equals(ackLog.getStatus());
+                result.setAckReceived(true);
+                result.setAcknowledged(acknowledged);
+                result.setStatus(ackLog.getStatus());
+                if (!acknowledged) {
+                    result.setErrorMessage("设备返回执行失败");
+                }
+                return result;
+            }
+            markTimeoutIfSent(messageID);
+        }
+
+        result.setStatus("TIMEOUT");
+        result.setErrorMessage("未在指定时间内收到设备ACK");
+        return result;
+    }
+
+    private CommandAckResultVO buildAckResult(CommandAckResultVO result, CommandLog ackLog) {
+        boolean acknowledged = "ACK".equals(ackLog.getStatus()) || "EXECUTED".equals(ackLog.getStatus());
+        result.setAckReceived(true);
+        result.setAcknowledged(acknowledged);
+        result.setStatus(ackLog.getStatus());
+        result.setLastMessageId(ackLog.getMessageId());
+        if (!acknowledged) {
+            result.setErrorMessage("设备返回执行失败");
+        }
+        return result;
+    }
+
+    private void publishSetPayload(String sn, String pointID, String value, String messageID) throws Exception {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("messageID", messageID);
+        payload.put("pointID", pointID);
+        payload.put("value", value);
+
+        String payloadJson = objectMapper.writeValueAsString(payload);
+        String topic = "api/v2/set/" + sn;
+        MqttMessage mqttMessage = new MqttMessage(payloadJson.getBytes());
+        mqttMessage.setQos(1);
+        mqttClient.publish(topic, mqttMessage);
+    }
+
+    private CommandLog waitForAck(String messageId, long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        CommandLog commandLog = null;
+        while (System.currentTimeMillis() <= deadline) {
+            commandLog = commandLogMapper.selectByMessageId(messageId);
+            if (commandLog != null && commandLog.getAckReceivedAt() != null) {
+                return commandLog;
+            }
+            try {
+                Thread.sleep(50L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return commandLog;
+            }
+        }
+        return commandLogMapper.selectByMessageId(messageId);
+    }
+
+    private void markSentIfPending(String messageId) {
+        commandLogMapper.update(null, new LambdaUpdateWrapper<CommandLog>()
+                .eq(CommandLog::getMessageId, messageId)
+                .eq(CommandLog::getStatus, "PENDING")
+                .set(CommandLog::getStatus, "SENT"));
+    }
+
+    private void markSentForRetry(String messageId) {
+        commandLogMapper.update(null, new LambdaUpdateWrapper<CommandLog>()
+                .eq(CommandLog::getMessageId, messageId)
+                .ne(CommandLog::getStatus, "ACK")
+                .ne(CommandLog::getStatus, "EXECUTED")
+                .set(CommandLog::getStatus, "SENT"));
+    }
+
+    private void markFailed(String messageId) {
+        commandLogMapper.update(null, new LambdaUpdateWrapper<CommandLog>()
+                .eq(CommandLog::getMessageId, messageId)
+                .set(CommandLog::getStatus, "FAILED"));
+    }
+
+    private void markTimeoutIfSent(String messageId) {
+        commandLogMapper.update(null, new LambdaUpdateWrapper<CommandLog>()
+                .eq(CommandLog::getMessageId, messageId)
+                .eq(CommandLog::getStatus, "SENT")
+                .set(CommandLog::getStatus, "TIMEOUT"));
     }
 
     public CommandLog sendCommand(String sn, Map<String, Object> params, Long operatorId) {

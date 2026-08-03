@@ -28,6 +28,7 @@ import com.platform.water.mapper.WaterDispenseOrderMapper;
 import com.platform.water.service.WaterDispenseService;
 import com.platform.water.service.WechatPayClient;
 import com.platform.water.vo.Q74ProtocolVO;
+import com.platform.water.vo.IotCommandAckResultVO;
 import com.platform.water.vo.WaterDispensePricePreviewVO;
 import com.platform.water.vo.WaterDispenseOrderVO;
 import com.platform.water.vo.WaterDispenseOrderStatsVO;
@@ -61,8 +62,11 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
     private static final String DISPENSE_PENDING_PAY = "PENDING_PAY";
     private static final String DISPENSE_PAID = "PAID";
     private static final String DISPENSE_DISPATCHED = "DISPATCHED";
+    private static final String DISPENSE_FAILED = "FAILED";
     private static final String COMMAND_PENDING = "PENDING";
     private static final String COMMAND_SENT = "SENT";
+    private static final String COMMAND_ACK = "ACK";
+    private static final String COMMAND_FAILED = "FAILED";
 
     private final WaterDispenseOrderMapper orderMapper;
     private final WaterDispenseEventMapper eventMapper;
@@ -123,6 +127,7 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
             throw new BusinessException(ResultCode.ORDER_STATUS_CONFLICT,
                     "order status cannot create wechat pay: " + order.getDispenseStatus());
         }
+        ensureDeviceOnline(resolveDevice(order.getDeviceId(), order.getSn()));
 
         CurrentUser currentUser = UserContext.get();
         if (currentUser == null || currentUser.getUserId() == null) {
@@ -172,7 +177,7 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
             return;
         }
 
-        if (DISPENSE_DISPATCHED.equals(order.getDispenseStatus()) && COMMAND_SENT.equals(order.getCommandStatus())) {
+        if (PAY_SUCCESS.equals(order.getPayStatus()) && StringUtils.hasText(order.getTransactionId())) {
             appendEvent(orderNo, "WECHAT_PAYMENT_NOTIFY_DUPLICATE", "SUCCESS", "duplicate wechat pay notify", summary);
             return;
         }
@@ -181,8 +186,9 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
                 ? order.getQ74Payload()
                 : buildQ74Payload("START", order.getTargetMl(), order.getWaterType());
 
-        orderMapper.update(null, new LambdaUpdateWrapper<WaterDispenseOrder>()
+        int updatedRows = orderMapper.update(null, new LambdaUpdateWrapper<WaterDispenseOrder>()
                 .eq(WaterDispenseOrder::getOrderNo, orderNo)
+                .ne(WaterDispenseOrder::getPayStatus, PAY_SUCCESS)
                 .set(WaterDispenseOrder::getPayStatus, PAY_SUCCESS)
                 .set(WaterDispenseOrder::getDispenseStatus, DISPENSE_PAID)
                 .set(WaterDispenseOrder::getTransactionId, transactionId)
@@ -190,6 +196,11 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
                 .set(WaterDispenseOrder::getMockPayment, false)
                 .set(WaterDispenseOrder::getPaidAt, LocalDateTime.now())
                 .set(WaterDispenseOrder::getQ74Payload, payload));
+        if (updatedRows <= 0) {
+            appendEvent(orderNo, "WECHAT_PAYMENT_NOTIFY_DUPLICATE", "SUCCESS",
+                    "duplicate wechat pay notify skipped dispatch", summary);
+            return;
+        }
         appendEvent(orderNo, "WECHAT_PAYMENT_SUCCESS", "SUCCESS", "wechat payment success", summary);
 
         dispatchQ74AfterPay(orderNo, order.getSn(), order.getTargetMl(), order.getWaterType(), payload);
@@ -235,7 +246,7 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
                         "SUM(CASE WHEN pay_status = 'SUCCESS' THEN 1 ELSE 0 END) AS paid",
                         "SUM(CASE WHEN pay_status = 'PENDING' THEN 1 ELSE 0 END) AS pending",
                         "SUM(CASE WHEN dispense_status = 'DISPATCHED' THEN 1 ELSE 0 END) AS dispatched",
-                        "SUM(CASE WHEN command_status = 'SENT' THEN 1 ELSE 0 END) AS sent",
+                        "SUM(CASE WHEN command_status IN ('SENT', 'ACK') THEN 1 ELSE 0 END) AS sent",
                         "COALESCE(SUM(CASE WHEN pay_status = 'SUCCESS' THEN pay_amount ELSE 0 END), 0) AS totalAmount");
         wrapper.eq(StringUtils.hasText(query.getOrderNo()), "order_no", query.getOrderNo())
                 .eq(StringUtils.hasText(query.getSn()), "sn", query.getSn())
@@ -271,26 +282,55 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
 
     private void dispatchQ74AfterPay(String orderNo, String sn, Long targetMl, Integer waterType, String payload) {
         String commandPayload = StringUtils.hasText(payload) ? payload : buildQ74Payload("START", targetMl, waterType);
-        sendQ74(sn, commandPayload);
+        LocalDateTime sentAt = LocalDateTime.now();
 
-        orderMapper.update(null, new LambdaUpdateWrapper<WaterDispenseOrder>()
-                .eq(WaterDispenseOrder::getOrderNo, orderNo)
-                .set(WaterDispenseOrder::getDispenseStatus, DISPENSE_DISPATCHED)
-                .set(WaterDispenseOrder::getCommandStatus, COMMAND_SENT)
-                .set(WaterDispenseOrder::getQ74Payload, commandPayload)
-                .set(WaterDispenseOrder::getCommandSentAt, LocalDateTime.now()));
-        appendEvent(orderNo, "Q74_COMMAND_SENT", "SUCCESS", "Q74 command sent", commandPayload);
+        try {
+            IotCommandAckResultVO ackResult = sendQ74WithAck(sn, commandPayload);
+            boolean acknowledged = ackResult != null && Boolean.TRUE.equals(ackResult.getAcknowledged());
+            if (acknowledged) {
+                orderMapper.update(null, new LambdaUpdateWrapper<WaterDispenseOrder>()
+                        .eq(WaterDispenseOrder::getOrderNo, orderNo)
+                        .set(WaterDispenseOrder::getDispenseStatus, DISPENSE_DISPATCHED)
+                        .set(WaterDispenseOrder::getCommandStatus, COMMAND_ACK)
+                        .set(WaterDispenseOrder::getQ74Payload, commandPayload)
+                        .set(WaterDispenseOrder::getCommandSentAt, sentAt));
+                appendEvent(orderNo, "Q74_COMMAND_ACK", "SUCCESS",
+                        "Q74 command acknowledged, attempts=" + ackResult.getAttempts()
+                                + ", messageId=" + ackResult.getLastMessageId(),
+                        commandPayload);
+                return;
+            }
+
+            String reason = ackResult != null && StringUtils.hasText(ackResult.getErrorMessage())
+                    ? ackResult.getErrorMessage()
+                    : "未收到设备ACK";
+            markQ74DispatchFailed(orderNo, commandPayload, sentAt, reason);
+        } catch (Exception e) {
+            log.warn("Q74 dispatch failed after payment: orderNo={}, sn={}, message={}", orderNo, sn, e.getMessage());
+            markQ74DispatchFailed(orderNo, commandPayload, sentAt, e.getMessage());
+        }
     }
 
-    private void sendQ74(String sn, String payload) {
-        R<Object> response = iotServiceClient.sendSetCommand(sn, Map.of(
+    private IotCommandAckResultVO sendQ74WithAck(String sn, String payload) {
+        R<IotCommandAckResultVO> response = iotServiceClient.sendSetCommandWithAck(sn, Map.of(
                 "pointID", properties.getCommandPoint(),
                 "value", payload
-        ), internalServiceToken);
+        ), properties.getCommandMaxAttempts(), properties.getCommandAckTimeoutMs(), internalServiceToken);
         if (response == null || response.getCode() == null || response.getCode() != 200) {
             String message = response != null ? response.getMessage() : "iot-service no response";
             throw new BusinessException(ResultCode.MQTT_COMMAND_FAILED, "Q74 dispatch failed: " + message);
         }
+        return response.getData();
+    }
+
+    private void markQ74DispatchFailed(String orderNo, String commandPayload, LocalDateTime sentAt, String reason) {
+        orderMapper.update(null, new LambdaUpdateWrapper<WaterDispenseOrder>()
+                .eq(WaterDispenseOrder::getOrderNo, orderNo)
+                .set(WaterDispenseOrder::getDispenseStatus, DISPENSE_FAILED)
+                .set(WaterDispenseOrder::getCommandStatus, COMMAND_FAILED)
+                .set(WaterDispenseOrder::getQ74Payload, commandPayload)
+                .set(WaterDispenseOrder::getCommandSentAt, sentAt));
+        appendEvent(orderNo, "Q74_COMMAND_FAILED", "FAIL", reason, commandPayload);
     }
 
     private String buildQ74Payload(String action, Long targetMl, Integer waterType) {
@@ -319,7 +359,7 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
             throw new BusinessException(ResultCode.PARAM_INVALID, "请输入取水量");
         }
         Long minTargetMl = properties.getMinTargetMl() != null ? properties.getMinTargetMl() : 1L;
-        Long maxTargetMl = properties.getMaxTargetMl() != null ? properties.getMaxTargetMl() : 10000L;
+        Long maxTargetMl = properties.getMaxTargetMl() != null ? properties.getMaxTargetMl() : 100000L;
         if (targetMl < minTargetMl || targetMl > maxTargetMl) {
             throw new BusinessException(ResultCode.PARAM_INVALID,
                     "取水量必须在 " + minTargetMl + "ml 到 " + maxTargetMl + "ml 之间");
@@ -338,16 +378,24 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
     }
 
     private Long calculatePayAmount(Long targetMl, Integer waterType) {
-        validateWaterType(waterType);
+        Integer normalizedWaterType = validateWaterType(waterType);
         long minPayAmount = properties.getMinPayAmount() != null ? properties.getMinPayAmount() : 1L;
-        long unitPriceCentsPerLiter = properties.getUnitPriceCentsPerLiter() != null
-                ? properties.getUnitPriceCentsPerLiter()
-                : 0L;
+        long unitPriceCentsPerLiter = resolveUnitPriceCentsPerLiter(normalizedWaterType);
         if (unitPriceCentsPerLiter <= 0) {
             return minPayAmount;
         }
         long amount = (targetMl * unitPriceCentsPerLiter + 999L) / 1000L;
         return Math.max(minPayAmount, amount);
+    }
+
+    private long resolveUnitPriceCentsPerLiter(Integer waterType) {
+        Long typePrice = waterType != null && waterType == 1
+                ? properties.getHotUnitPriceCentsPerLiter()
+                : properties.getColdUnitPriceCentsPerLiter();
+        if (typePrice != null) {
+            return typePrice;
+        }
+        return properties.getUnitPriceCentsPerLiter() != null ? properties.getUnitPriceCentsPerLiter() : 0L;
     }
 
     private void validateWechatPayNotify(WaterDispenseOrder order, JsonNode decrypted) {
@@ -437,7 +485,14 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
         if (device.getSn() == null || device.getSn().isBlank()) {
             throw new BusinessException(ResultCode.PARAM_INVALID, "device sn is empty, cannot dispatch Q74");
         }
+        ensureDeviceOnline(device);
         return device;
+    }
+
+    private void ensureDeviceOnline(DeviceLookup device) {
+        if (device == null || device.getOnlineStatus() == null || device.getOnlineStatus() != 1) {
+            throw new BusinessException(ResultCode.PARAM_INVALID, "设备不在线，暂不能购买取水");
+        }
     }
 
     private String generateOrderNo() {

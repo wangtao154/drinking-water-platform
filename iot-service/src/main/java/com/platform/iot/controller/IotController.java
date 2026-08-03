@@ -13,6 +13,7 @@ import com.platform.iot.entity.Device;
 import com.platform.iot.mapper.DeviceLookupMapper;
 import com.platform.iot.service.CommandService;
 import com.platform.iot.service.InfluxDbService;
+import com.platform.iot.vo.CommandAckResultVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -121,6 +122,25 @@ public class IotController {
             @RequestHeader(value = INTERNAL_TOKEN_HEADER, required = false) String internalToken) {
         verifyInternalToken(internalToken);
         return doSendSetCommand(sn, body, null);
+    }
+
+    @PostMapping("/internal/devices/{sn}/set-with-ack")
+    public R<CommandAckResultVO> sendInternalSetCommandWithAck(
+            @PathVariable String sn,
+            @RequestBody Map<String, String> body,
+            @RequestParam(value = "maxAttempts", required = false) Integer maxAttempts,
+            @RequestParam(value = "ackTimeoutMs", required = false) Long ackTimeoutMs,
+            @RequestHeader(value = INTERNAL_TOKEN_HEADER, required = false) String internalToken) {
+        verifyInternalToken(internalToken);
+        String pointID = body.get("pointID");
+        String value = body.get("value");
+        if (pointID == null || pointID.isEmpty()) {
+            return R.fail(40001, "pointID 不能为空");
+        }
+        if (value == null) {
+            return R.fail(40001, "value 不能为空");
+        }
+        return R.ok(commandService.sendSetCommandWithAck(sn, pointID, value, null, maxAttempts, ackTimeoutMs));
     }
 
     private R<CommandLog> doSendSetCommand(String sn, Map<String, String> body, Long operatorId) {

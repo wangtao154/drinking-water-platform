@@ -58,6 +58,8 @@
             <el-option label="全部" value="" />
             <el-option label="待下发" value="PENDING" />
             <el-option label="已发送" value="SENT" />
+            <el-option label="已确认" value="ACK" />
+            <el-option label="异常" value="FAILED" />
           </el-select>
         </el-form-item>
         <el-form-item label="支付时间">
@@ -257,12 +259,14 @@ function dispenseStatusLabel(status: string): string {
     PENDING_PAY: '待支付',
     PAID: '待下发',
     DISPATCHED: '已下发',
+    FAILED: '异常',
   }
   return map[status] || status || '-'
 }
 
 function dispenseStatusTag(status: string): TagType {
   if (status === 'DISPATCHED') return 'success'
+  if (status === 'FAILED') return 'danger'
   if (status === 'PAID') return 'warning'
   if (status === 'PENDING_PAY') return 'info'
   return 'info'
@@ -272,12 +276,16 @@ function commandStatusLabel(status: string): string {
   const map: Record<string, string> = {
     PENDING: '待下发',
     SENT: '已发送',
+    ACK: '已确认',
+    FAILED: '异常',
   }
   return map[status] || status || '-'
 }
 
 function commandStatusTag(status: string): TagType {
   if (status === 'SENT') return 'success'
+  if (status === 'ACK') return 'success'
+  if (status === 'FAILED') return 'danger'
   if (status === 'PENDING') return 'warning'
   return 'info'
 }

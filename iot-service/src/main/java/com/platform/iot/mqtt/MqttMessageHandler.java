@@ -198,8 +198,11 @@ public class MqttMessageHandler {
 
         try {
             JsonNode root = objectMapper.readTree(payload);
-            String messageId = root.has("messageId") ? root.get("messageId").asText() : null;
-            String status = root.has("status") ? root.get("status").asText() : "EXECUTED";
+            String messageId = root.has("messageID") ? root.get("messageID").asText()
+                    : (root.has("messageId") ? root.get("messageId").asText() : null);
+            int errCode = root.has("errCode") ? root.get("errCode").asInt(0) : 0;
+            String errMsg = root.has("errMsg") ? root.get("errMsg").asText("") : "";
+            String status = errCode == 0 ? "ACK" : "FAILED";
 
             if (messageId == null) {
                 log.warn("ACK missing messageId, SN: {}", sn);
@@ -207,11 +210,13 @@ public class MqttMessageHandler {
             }
 
             // Update command_log
-            CommandLog commandLog = commandLogMapper.selectById(messageId);
+            CommandLog commandLog = commandLogMapper.selectByMessageId(messageId);
             if (commandLog != null) {
                 commandLog.setStatus(status);
                 commandLog.setAckReceivedAt(LocalDateTime.now());
                 commandLogMapper.updateById(commandLog);
+                log.info("ACK updated: SN={}, messageId={}, status={}, errCode={}, errMsg={}",
+                        sn, messageId, status, errCode, errMsg);
             } else {
                 log.warn("Command log not found for messageId: {}", messageId);
             }
