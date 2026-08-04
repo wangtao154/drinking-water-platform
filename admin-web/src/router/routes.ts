@@ -162,7 +162,8 @@ export const asyncRoutes: RouteRecordRaw[] = [
       { path: 'water-quality', name: 'ReportWaterQuality', component: () => import('@/views/report/waterQuality.vue'), meta: { title: '水质报表', icon: 'LineChart', permission: 'REPORT_VIEW' } },
       { path: 'flow', name: 'ReportFlow', component: () => import('@/views/report/flow.vue'), meta: { title: '流量报表', icon: 'DataLine', permission: 'REPORT_VIEW' } },
       { path: 'revenue', name: 'ReportRevenue', component: () => import('@/views/report/revenue.vue'), meta: { title: '营收报表', icon: 'BarChart', permission: 'REPORT_VIEW' } },
-      { path: 'work-order', name: 'ReportWorkOrder', component: () => import('@/views/report/workOrder.vue'), meta: { title: '工单报表', icon: 'PieChart', permission: 'REPORT_VIEW' } }
+      { path: 'work-order', name: 'ReportWorkOrder', component: () => import('@/views/report/workOrder.vue'), meta: { title: '工单报表', icon: 'PieChart', permission: 'REPORT_VIEW' } },
+      { path: 'data-export', name: 'ReportDataExport', component: () => import('@/views/report/dataExport.vue'), meta: { title: '数据导出', icon: 'Download', permission: 'REPORT_VIEW' } }
     ]
   },
   // 监控预警
@@ -172,6 +173,7 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '监控预警', icon: 'Monitor', permission: 'MONITOR' },
     children: [
       { path: 'alerts', name: 'MonitorAlerts', component: () => import('@/views/monitor/alerts.vue'), meta: { title: '告警列表', icon: 'Warning', permission: 'MONITOR_VIEW' } },
+      { path: 'ro-membrane', name: 'MonitorRoMembrane', component: () => import('@/views/monitor/roMembrane.vue'), meta: { title: 'RO膜预测', icon: 'DataAnalysis', permission: 'MONITOR_VIEW' } },
       { path: 'thresholds', name: 'MonitorThresholds', component: () => import('@/views/monitor/thresholds.vue'), meta: { title: '阈值管理', icon: 'Setting', permission: 'MONITOR_EDIT' } }
     ]
   },

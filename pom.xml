@@ -45,6 +45,7 @@
         <module>inventory-service</module>
         <module>monitor-service</module>
         <module>report-service</module>
+        <module>ai-service</module>
         <module>system-service</module>
         <module>push-service</module>
     </modules>

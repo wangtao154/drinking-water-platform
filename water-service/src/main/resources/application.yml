@@ -74,7 +74,7 @@ water:
     min-target-ml: ${WATER_SCAN_MIN_TARGET_ML:100}
     max-target-ml: ${WATER_SCAN_MAX_TARGET_ML:100000}
     default-duration-seconds: 120
-    command-max-attempts: ${WATER_SCAN_COMMAND_MAX_ATTEMPTS:5}
+    command-max-attempts: ${WATER_SCAN_COMMAND_MAX_ATTEMPTS:3}
     command-ack-timeout-ms: ${WATER_SCAN_COMMAND_ACK_TIMEOUT_MS:6000}
 
 wechat:

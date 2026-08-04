@@ -4,12 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.platform.iot.entity.CommandLog;
 import com.platform.iot.entity.Device;
+import com.platform.iot.config.MqttConfig;
 import com.platform.iot.mapper.CommandLogMapper;
 import com.platform.iot.mapper.DeviceLookupMapper;
 import com.platform.iot.vo.CommandAckResultVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.springframework.stereotype.Service;
 
@@ -24,7 +24,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CommandService {
 
-    private final MqttClient mqttClient;
+    private final MqttConfig mqttConfig;
     private final CommandLogMapper commandLogMapper;
     private final DeviceLookupMapper deviceLookupMapper;
     private final ObjectMapper objectMapper;
@@ -80,7 +80,7 @@ public class CommandService {
 
     public CommandAckResultVO sendSetCommandWithAck(String sn, String pointID, String value, Long operatorId,
                                                     Integer maxAttempts, Long ackTimeoutMs) {
-        int attemptsLimit = maxAttempts != null && maxAttempts > 0 ? maxAttempts : 5;
+        int attemptsLimit = maxAttempts != null && maxAttempts > 0 ? maxAttempts : 3;
         long timeoutMs = ackTimeoutMs != null && ackTimeoutMs > 0 ? ackTimeoutMs : 6000L;
         CommandAckResultVO result = CommandAckResultVO.pending(attemptsLimit, timeoutMs);
         Device device = deviceLookupMapper.selectBySn(sn);
@@ -162,7 +162,7 @@ public class CommandService {
         String topic = "api/v2/set/" + sn;
         MqttMessage mqttMessage = new MqttMessage(payloadJson.getBytes());
         mqttMessage.setQos(1);
-        mqttClient.publish(topic, mqttMessage);
+        mqttConfig.getConnectedClient().publish(topic, mqttMessage);
     }
 
     private CommandLog waitForAck(String messageId, long timeoutMs) {
@@ -243,7 +243,7 @@ public class CommandService {
             // Publish to MQTT
             MqttMessage mqttMessage = new MqttMessage(payloadJson.getBytes());
             mqttMessage.setQos(1);
-            mqttClient.publish(topic, mqttMessage);
+            mqttConfig.getConnectedClient().publish(topic, mqttMessage);
 
             // Save to command_log
             // For each Q-series point, create a separate command log entry

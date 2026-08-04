@@ -1,5 +1,9 @@
 package com.platform.report.service.impl;
 
+import com.influxdb.client.InfluxDBClient;
+import com.influxdb.query.FluxRecord;
+import com.influxdb.query.FluxTable;
+import com.platform.report.dto.TelemetryExportRequest;
 import com.platform.report.service.ReportService;
 import com.platform.report.vo.DashboardVO;
 import com.platform.report.vo.DeviceReportVO;
@@ -7,15 +11,38 @@ import com.platform.report.vo.FlowReportVO;
 import com.platform.report.vo.FinanceReportVO;
 import com.platform.report.vo.OrderReportVO;
 import com.platform.report.vo.WorkerReportVO;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * 报表统计 Service 实现
@@ -26,6 +53,24 @@ import java.util.Map;
 public class ReportServiceImpl implements ReportService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final InfluxDBClient influxDBClient;
+
+    @Value("${influxdb.org:platform}")
+    private String influxOrg;
+
+    @Value("${influxdb.bucket:drinking_water}")
+    private String influxBucket;
+
+    private static final ZoneId CHINA_ZONE = ZoneId.of("Asia/Shanghai");
+    private static final DateTimeFormatter DISPLAY_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final Duration MAX_EXPORT_RANGE = Duration.ofDays(31);
+    private static final int MAX_EXPORT_ROWS = 200_000;
+    private static final Pattern SN_PATTERN = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
+    private static final Pattern POINT_PATTERN = Pattern.compile("^P\\d{1,3}$");
+    private static final Set<String> ALLOWED_INTERVALS = Set.of(
+            "1s", "10s", "30s", "1m", "5m", "10m", "30m", "1h", "6h", "12h", "1d"
+    );
+    private static final Map<String, String> POINT_LABELS = createPointLabels();
 
     @Override
     public DashboardVO getDashboard() {
@@ -166,5 +211,271 @@ public class ReportServiceImpl implements ReportService {
 
         log.info("[报表] 流量统计完成");
         return vo;
+    }
+
+    @Override
+    public void exportTelemetry(TelemetryExportRequest request, HttpServletResponse response) throws IOException {
+        String sn = normalizeSn(request.getSn());
+        List<String> fields = normalizeFields(request.getFields());
+        String interval = normalizeInterval(request.getInterval());
+        Instant start = parseTime(request.getStartTime());
+        Instant end = parseTime(request.getEndTime());
+
+        if (!start.isBefore(end)) {
+            throw new IllegalArgumentException("开始时间必须早于结束时间");
+        }
+        if (Duration.between(start, end).compareTo(MAX_EXPORT_RANGE) > 0) {
+            throw new IllegalArgumentException("单次导出时间范围不能超过 31 天");
+        }
+
+        validateEstimatedExportSize(fields, start, end, interval);
+
+        TreeMap<Instant, Map<String, Object>> rows = queryTelemetryRows(sn, fields, start, end, interval);
+        writeTelemetryWorkbook(sn, fields, start, end, interval, rows, response);
+        log.info("[报表] 设备历史数据导出完成, sn={}, fields={}, rows={}", sn, fields, rows.size());
+    }
+
+    private TreeMap<Instant, Map<String, Object>> queryTelemetryRows(
+            String sn, List<String> fields, Instant start, Instant end, String interval) {
+        String fieldList = fields.stream()
+                .map(field -> "\"" + field + "\"")
+                .collect(Collectors.joining(", "));
+        String flux = String.format(
+                "from(bucket: \"%s\")\n" +
+                "  |> range(start: time(v: \"%s\"), stop: time(v: \"%s\"))\n" +
+                "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.sn == \"%s\")\n" +
+                "  |> filter(fn: (r) => contains(value: r._field, set: [%s]))\n" +
+                "  |> filter(fn: (r) => exists r._value)\n" +
+                "  |> aggregateWindow(every: %s, fn: mean, createEmpty: false)\n" +
+                "  |> keep(columns: [\"_time\", \"_field\", \"_value\"])",
+                escapeFluxString(influxBucket), start, end, escapeFluxString(sn), fieldList, interval
+        );
+
+        List<FluxTable> tables = influxDBClient.getQueryApi().query(flux, influxOrg);
+        TreeMap<Instant, Map<String, Object>> rows = new TreeMap<>();
+        int recordCount = 0;
+        for (FluxTable table : tables) {
+            for (FluxRecord record : table.getRecords()) {
+                if (record.getTime() == null || record.getField() == null) {
+                    continue;
+                }
+                rows.computeIfAbsent(record.getTime(), key -> new LinkedHashMap<>())
+                        .put(record.getField(), record.getValue());
+                recordCount++;
+                if (recordCount > MAX_EXPORT_ROWS) {
+                    throw new IllegalArgumentException("导出数据量过大，请缩短时间范围或调大统计间隔");
+                }
+            }
+        }
+        return rows;
+    }
+
+    private void writeTelemetryWorkbook(
+            String sn,
+            List<String> fields,
+            Instant start,
+            Instant end,
+            String interval,
+            TreeMap<Instant, Map<String, Object>> dataRows,
+            HttpServletResponse response) throws IOException {
+        try (SXSSFWorkbook workbook = new SXSSFWorkbook(100)) {
+            workbook.setCompressTempFiles(true);
+            Sheet sheet = workbook.createSheet("历史数据");
+            sheet.setColumnWidth(0, 22 * 256);
+            for (int i = 0; i < fields.size(); i++) {
+                sheet.setColumnWidth(i + 1, 20 * 256);
+            }
+
+            CellStyle titleStyle = workbook.createCellStyle();
+            Font titleFont = workbook.createFont();
+            titleFont.setBold(true);
+            titleFont.setFontHeightInPoints((short) 14);
+            titleStyle.setFont(titleFont);
+
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerStyle.setFont(headerFont);
+
+            Row titleRow = sheet.createRow(0);
+            titleRow.createCell(0).setCellValue("设备历史数据导出");
+            titleRow.getCell(0).setCellStyle(titleStyle);
+
+            Row metaRow = sheet.createRow(1);
+            metaRow.createCell(0).setCellValue("设备SN");
+            metaRow.createCell(1).setCellValue(sn);
+            metaRow.createCell(2).setCellValue("时间范围");
+            metaRow.createCell(3).setCellValue(formatInstant(start) + " 至 " + formatInstant(end));
+            metaRow.createCell(4).setCellValue("间隔");
+            metaRow.createCell(5).setCellValue(interval);
+
+            Row headerRow = sheet.createRow(3);
+            headerRow.createCell(0).setCellValue("时间");
+            headerRow.getCell(0).setCellStyle(headerStyle);
+            for (int i = 0; i < fields.size(); i++) {
+                headerRow.createCell(i + 1).setCellValue(getPointLabel(fields.get(i)));
+                headerRow.getCell(i + 1).setCellStyle(headerStyle);
+            }
+
+            int rowIndex = 4;
+            for (Map.Entry<Instant, Map<String, Object>> entry : dataRows.entrySet()) {
+                Row row = sheet.createRow(rowIndex++);
+                row.createCell(0).setCellValue(formatInstant(entry.getKey()));
+                Map<String, Object> values = entry.getValue();
+                for (int i = 0; i < fields.size(); i++) {
+                    Object value = values.get(fields.get(i));
+                    if (value instanceof Number number) {
+                        row.createCell(i + 1).setCellValue(number.doubleValue());
+                    } else if (value != null) {
+                        row.createCell(i + 1).setCellValue(String.valueOf(value));
+                    } else {
+                        row.createCell(i + 1).setCellValue("");
+                    }
+                }
+            }
+
+            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            String filename = "设备历史数据_" + sn + "_" +
+                    LocalDateTime.now(CHINA_ZONE).format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".xlsx";
+            String encodedFilename = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
+            response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodedFilename);
+            workbook.write(response.getOutputStream());
+        }
+    }
+
+    private String normalizeSn(String sn) {
+        String normalized = sn == null ? "" : sn.trim();
+        if (!SN_PATTERN.matcher(normalized).matches()) {
+            throw new IllegalArgumentException("设备 SN 格式不正确");
+        }
+        return normalized;
+    }
+
+    private List<String> normalizeFields(String fields) {
+        if (fields == null || fields.isBlank()) {
+            throw new IllegalArgumentException("请选择导出点位");
+        }
+        LinkedHashSet<String> normalized = Arrays.stream(fields.split(","))
+                .map(String::trim)
+                .map(String::toUpperCase)
+                .filter(field -> !field.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException("请选择导出点位");
+        }
+        if (normalized.size() > 30) {
+            throw new IllegalArgumentException("单次最多导出 30 个点位");
+        }
+        for (String field : normalized) {
+            if (!POINT_PATTERN.matcher(field).matches()) {
+                throw new IllegalArgumentException("点位格式不正确: " + field);
+            }
+        }
+        return new ArrayList<>(normalized);
+    }
+
+    private String normalizeInterval(String interval) {
+        String normalized = interval == null || interval.isBlank() ? "10m" : interval.trim().toLowerCase();
+        if (!ALLOWED_INTERVALS.contains(normalized)) {
+            throw new IllegalArgumentException("不支持的统计间隔: " + interval);
+        }
+        return normalized;
+    }
+
+    private void validateEstimatedExportSize(List<String> fields, Instant start, Instant end, String interval) {
+        Duration intervalDuration = parseIntervalDuration(interval);
+        long seconds = Math.max(1L, Duration.between(start, end).getSeconds());
+        long intervalSeconds = Math.max(1L, intervalDuration.getSeconds());
+        long estimatedRecords = ((seconds + intervalSeconds - 1) / intervalSeconds) * fields.size();
+        if (estimatedRecords > MAX_EXPORT_ROWS) {
+            throw new IllegalArgumentException("导出数据量过大，请缩短时间范围或调大统计间隔");
+        }
+    }
+
+    private Duration parseIntervalDuration(String interval) {
+        String unit = interval.substring(interval.length() - 1);
+        long amount = Long.parseLong(interval.substring(0, interval.length() - 1));
+        return switch (unit) {
+            case "s" -> Duration.ofSeconds(amount);
+            case "m" -> Duration.ofMinutes(amount);
+            case "h" -> Duration.ofHours(amount);
+            case "d" -> Duration.ofDays(amount);
+            default -> Duration.ofMinutes(10);
+        };
+    }
+
+    private Instant parseTime(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("时间不能为空");
+        }
+        String text = value.trim();
+        try {
+            if (text.endsWith("Z") || text.matches(".*[+-]\\d{2}:\\d{2}$")) {
+                return Instant.parse(text);
+            }
+            DateTimeFormatter formatter = text.length() == 16
+                    ? DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                    : DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            return LocalDateTime.parse(text.replace('T', ' '), formatter).atZone(CHINA_ZONE).toInstant();
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException("时间格式不正确，请使用 yyyy-MM-dd HH:mm:ss");
+        }
+    }
+
+    private String formatInstant(Instant instant) {
+        return DISPLAY_TIME_FORMATTER.format(instant.atZone(CHINA_ZONE));
+    }
+
+    private String getPointLabel(String pointId) {
+        return pointId + " - " + POINT_LABELS.getOrDefault(pointId, pointId);
+    }
+
+    private String escapeFluxString(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private static Map<String, String> createPointLabels() {
+        Map<String, String> labels = new LinkedHashMap<>();
+        labels.put("P1", "原水TDS (PPM)");
+        labels.put("P2", "纯水TDS (PPM)");
+        labels.put("P3", "矿水TDS (PPM)");
+        labels.put("P4", "原水温度 (℃)");
+        labels.put("P5", "纯水温度 (℃)");
+        labels.put("P6", "矿水温度 (℃)");
+        labels.put("P7", "纯水瞬时流量 (L/min)");
+        labels.put("P8", "净水瞬时流量 (L/min)");
+        labels.put("P9", "矿水瞬时流量 (L/min)");
+        labels.put("P10", "废水瞬时流量 (L/min)");
+        labels.put("P11", "原水瞬时流量 (L/min)");
+        labels.put("P12", "纯水累计流量 (L)");
+        labels.put("P13", "净水累计流量 (L)");
+        labels.put("P14", "矿水累计流量 (L)");
+        labels.put("P15", "废水累计流量 (L)");
+        labels.put("P16", "原水累计流量 (L)");
+        labels.put("P17", "原水压力 (bar)");
+        labels.put("P18", "膜前压力 (bar)");
+        labels.put("P19", "膜后压力 (bar)");
+        labels.put("P20", "矿水压力 (bar)");
+        labels.put("P21", "比例阀开度1 (%)");
+        labels.put("P22", "比例阀开度2 (%)");
+        labels.put("P23", "制水状态");
+        labels.put("P24", "TDS制水状态");
+        labels.put("P25", "RO强冲状态");
+        labels.put("P26", "纯水洗膜状态");
+        labels.put("P27", "超滤冲洗状态");
+        labels.put("P28", "故障报警");
+        labels.put("P29", "比例阀状态");
+        labels.put("P30", "预留3");
+        labels.put("P31", "高压开关");
+        labels.put("P32", "低压开关");
+        labels.put("P33", "漏水状态");
+        labels.put("P34", "电压低检测");
+        labels.put("P35", "DI1");
+        labels.put("P36", "DI2");
+        labels.put("P37", "DI3");
+        labels.put("P38", "DI4");
+        labels.put("P39", "DI5");
+        return labels;
     }
 }

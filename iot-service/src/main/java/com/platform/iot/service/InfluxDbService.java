@@ -218,10 +218,12 @@ public class InfluxDbService {
             }
 
             // Add aggregation window (mean) to downsample data
+            flux.append("  |> filter(fn: (r) => exists r._value)\n");
             flux.append(String.format(
                     "  |> aggregateWindow(every: %s, fn: mean, createEmpty: false)\n",
                     queryInterval
             ));
+            flux.append("  |> keep(columns: [\"_time\", \"_field\", \"_value\"])\n");
 
             // Group by field so each FluxTable corresponds to one field
             flux.append("  |> group(columns: [\"_field\"])");
@@ -305,8 +307,8 @@ public class InfluxDbService {
             case "1h":  return "1m";
             case "6h":  return "5m";
             case "24h": return "10m";
-            case "7d":  return "1h";
-            case "30d": return "6h";
+            case "7d":  return "2h";
+            case "30d": return "12h";
             default:    return "10m";
         }
     }

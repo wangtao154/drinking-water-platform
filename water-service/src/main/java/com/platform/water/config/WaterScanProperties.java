@@ -41,7 +41,7 @@ public class WaterScanProperties {
 
     private Integer defaultDurationSeconds = 120;
 
-    private Integer commandMaxAttempts = 5;
+    private Integer commandMaxAttempts = 3;
 
     private Long commandAckTimeoutMs = 6000L;
 }

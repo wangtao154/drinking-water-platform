@@ -650,6 +650,9 @@ async function loadHistory() {
     }
   } catch {
     hasHistoryData.value = false
+    if (historyChart) {
+      historyChart.clear()
+    }
     ElMessage.error('加载历史数据失败')
   } finally {
     historyLoading.value = false

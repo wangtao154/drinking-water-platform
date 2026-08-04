@@ -1,9 +1,9 @@
 server:
-  port: 8097
+  port: 8101
 
 spring:
   application:
-    name: report-service
+    name: ai-service
 
   config:
     import:
@@ -21,72 +21,46 @@ spring:
         password: nacos
         file-extension: yml
 
-  # MySQL
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:dw-mysql:3306}/${MYSQL_DATABASE:drinking_water}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
     username: root
     password: ${MYSQL_ROOT_PASSWORD:DrinkingWater@2026}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
+      maximum-pool-size: 5
+      minimum-idle: 1
       connection-timeout: 30000
       idle-timeout: 600000
 
-  # Redis
-  data:
-    redis:
-      host: ${REDIS_HOST:dw-redis}
-      port: 6379
-      password: ${REDIS_PASSWORD:Redis@2026}
-      database: 0
-      timeout: 5000
-      lettuce:
-        pool:
-          max-active: 16
-          max-idle: 8
-          min-idle: 2
-
-  # RabbitMQ
-  rabbitmq:
-    host: ${RABBITMQ_HOST:dw-rabbitmq}
-    port: 5672
-    username: ${RABBITMQ_USER:admin}
-    password: ${RABBITMQ_PASSWORD:RabbitMQ@2026}
-    virtual-host: /
-
-  # JSON
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
 
-# InfluxDB
 influxdb:
   url: ${INFLUXDB_URL:http://dw-influxdb:8086}
   token: ${INFLUXDB_TOKEN:drinking-water-super-token-please-change-in-production}
   org: ${INFLUXDB_ORG:platform}
   bucket: ${INFLUXDB_BUCKET:drinking_water}
-  timeout-seconds: ${INFLUXDB_TIMEOUT_SECONDS:180}
+  timeout-seconds: ${AI_INFLUXDB_TIMEOUT_SECONDS:90}
 
-# MyBatis-Plus
-mybatis-plus:
-  configuration:
-    map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
-  global-config:
-    db-config:
-      logic-delete-field: deleted
-      logic-delete-value: 1
-      logic-not-delete-value: 0
+ai:
+  qwen:
+    enabled: ${AI_QWEN_ENABLED:true}
+    api-key: ${AI_QWEN_API_KEY:}
+    base-url: ${AI_QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    model: ${AI_QWEN_MODEL:qwen3.7-plus}
+    timeout-seconds: ${AI_QWEN_TIMEOUT_SECONDS:45}
+  ro:
+    default-rated-pure-liters: ${AI_RO_DEFAULT_RATED_PURE_LITERS:12000}
+    default-range-days: ${AI_RO_DEFAULT_RANGE_DAYS:30}
+    default-aggregate-every: ${AI_RO_DEFAULT_AGGREGATE_EVERY:30m}
 
-# JWT
-jwt:
-  secret: ${JWT_SECRET:drinking-water-platform-jwt-secret-key-please-change-in-production-2026}
-  access-expire: 7200
-  refresh-expire: 604800
-
-# Actuator
 management:
+  health:
+    redis:
+      enabled: false
+    rabbit:
+      enabled: false
   endpoints:
     web:
       exposure:
@@ -95,8 +69,7 @@ management:
     health:
       show-details: always
 
-# Logging
 logging:
   level:
-    com.platform.report: info
+    com.platform.ai: info
     org.springframework.web: info

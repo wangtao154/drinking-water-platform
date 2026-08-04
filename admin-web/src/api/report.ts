@@ -1,9 +1,17 @@
-import { get } from '@/utils/request'
+import service, { get } from '@/utils/request'
 import type { DashboardVO, ReportDeviceVO, ReportOrderVO, ReportFinanceVO, ReportWorkerVO, FlowReportVO, R } from '@/types/api'
 
 export type { DashboardVO, ReportDeviceVO, ReportOrderVO, ReportFinanceVO, ReportWorkerVO, FlowReportVO, R }
 
 const BASE = '/v1/reports'
+
+export interface TelemetryExportParams {
+  sn: string
+  fields: string
+  startTime: string
+  endTime: string
+  interval: string
+}
 
 export function getDashboard() {
   return get<DashboardVO>(`${BASE}/dashboard`)
@@ -22,4 +30,14 @@ export function getWorkerReport() {
 }
 export function getFlowReport() {
   return get<FlowReportVO>(`${BASE}/flow`)
+}
+
+export function exportTelemetryReport(params: TelemetryExportParams) {
+  return service({
+    method: 'GET',
+    url: `${BASE}/telemetry/export`,
+    params,
+    responseType: 'blob',
+    timeout: 180000
+  })
 }

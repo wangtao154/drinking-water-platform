@@ -5,7 +5,6 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import jakarta.annotation.PostConstruct;
@@ -36,18 +35,9 @@ public class MqttConfig {
         this.mqttConfigService = mqttConfigService;
     }
 
-    /**
-     * 暴露 MqttClient 供其他服务注入使用（如 CommandService 用于下发指令）
-     * 注意：mqttClient 是 volatile 字段，连接时由 connectWithCurrentConfig 初始化
-     */
-    @Bean
-    public MqttClient mqttClient() {
-        return mqttClient;
-    }
-
     @PostConstruct
     public void init() {
-        // 启动时同步连接，确保 MqttClient bean 立即可用
+        // 启动时同步连接，确保运行期可获取当前 MQTT 客户端
         connectWithCurrentConfig();
     }
 
@@ -81,7 +71,21 @@ public class MqttConfig {
                 options.setPassword(c.getPassword().toCharArray());
             }
 
-            mqttClient.setCallback(new MqttCallback() {
+            mqttClient.setCallback(new MqttCallbackExtended() {
+                @Override
+                public void connectComplete(boolean reconnect, String serverURI) {
+                    connected = true;
+                    if (reconnect) {
+                        try {
+                            subscribeTopics();
+                            log.info("[MQTT] 重连完成并重新订阅 broker={}", serverURI);
+                        } catch (Exception e) {
+                            lastError = e.getMessage();
+                            log.error("[MQTT] 重连后订阅失败: {}", e.getMessage(), e);
+                        }
+                    }
+                }
+
                 @Override
                 public void connectionLost(Throwable cause) {
                     log.warn("[MQTT] 连接断开: {}", cause.getMessage());
@@ -124,9 +128,7 @@ public class MqttConfig {
             log.info("[MQTT] 已连接 broker={}", c.getBroker());
 
             // 订阅主题
-            mqttClient.subscribe("api/v2/data/#", 1);
-            mqttClient.subscribe("api/v2/lwt/#", 1);
-            mqttClient.subscribe("api/v2/ack/#", 1);
+            subscribeTopics();
             log.info("[MQTT] 订阅完成: data/#, lwt/#, ack/#");
         } catch (Exception e) {
             log.error("[MQTT] 连接失败: {}", e.getMessage(), e);
@@ -163,6 +165,16 @@ public class MqttConfig {
         }
     }
 
+    private void subscribeTopics() throws MqttException {
+        MqttClient client = mqttClient;
+        if (client == null || !client.isConnected()) {
+            throw new MqttException(MqttException.REASON_CODE_CLIENT_NOT_CONNECTED);
+        }
+        client.subscribe("api/v2/data/#", 1);
+        client.subscribe("api/v2/lwt/#", 1);
+        client.subscribe("api/v2/ack/#", 1);
+    }
+
     @PreDestroy
     public void destroy() {
         disconnect();
@@ -174,4 +186,12 @@ public class MqttConfig {
     public boolean isRunning() { return running; }
     public boolean isConnected() { return connected; }
     public String getLastError() { return lastError; }
+
+    public MqttClient getConnectedClient() throws MqttException {
+        MqttClient client = mqttClient;
+        if (client == null || !client.isConnected()) {
+            throw new MqttException(MqttException.REASON_CODE_CLIENT_NOT_CONNECTED);
+        }
+        return client;
+    }
 }

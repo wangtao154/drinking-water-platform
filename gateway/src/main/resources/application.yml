@@ -127,6 +127,14 @@ spring:
           filters:
             - StripPrefix=0
 
+        # ---- ai-service (isolated) ----
+        - id: ai-service
+          uri: lb://ai-service
+          predicates:
+            - Path=/api/v1/ai/**
+          filters:
+            - StripPrefix=0
+
         # ---- inventory-service (P4) ----
         - id: inventory-service
           uri: lb://inventory-service
