@@ -25,9 +25,13 @@ export interface AiAdviceVO {
 export interface QwenAdviceVO {
   status: string
   model?: string
+  healthScore?: number
   summary?: string
   riskLevel?: string
+  estimatedRemainingLiters?: number
+  estimatedRemainingDays?: number
   maintenancePriority?: string
+  confidence?: string
   recommendedActions?: string[]
   reasoning?: string
   errorMessage?: string | null
@@ -45,11 +49,15 @@ export interface RoMembranePredictionVO {
   ratedPureLiters: number
   dataPointCount: number
   dataStatus: string
+  predictionSource?: string
+  predictionFallbackReason?: string
   healthScore: number
   riskLevel: string
   estimatedRemainingLiters: number
   estimatedRemainingDays: number
   dailyPureLiters: number
+  productionRawTds?: number
+  productionPureTds?: number
   desalinationRate: number
   wastewaterRatio: number
   membranePressureDiff: number

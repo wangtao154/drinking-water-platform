@@ -46,9 +46,10 @@ public class QwenClient {
                     "response_format", Map.of("type", "json_object"),
                     "messages", List.of(
                             Map.of("role", "system", "content", """
-                                    你是直饮水设备RO膜寿命预测助手。只输出JSON，不输出Markdown。
-                                    JSON字段包括summary、riskLevel、maintenancePriority、recommendedActions、reasoning。
-                                    建议必须保守、可执行，不能编造没有给出的传感器数据。
+                                    你是直饮水设备 RO 膜寿命预测模型。只能输出 JSON，不能输出 Markdown。
+                                    JSON 字段必须包含 healthScore、riskLevel、estimatedRemainingLiters、estimatedRemainingDays、maintenancePriority、confidence、summary、recommendedActions、reasoning。
+                                    riskLevel 只能是 LOW、MEDIUM、HIGH、CRITICAL；healthScore 范围 0-100；remaining 字段必须是非负数字。
+                                    预测必须保守、可解释，不能编造未提供的传感器数据。
                                     """),
                             Map.of("role", "user", "content", prompt)
                     )
@@ -76,10 +77,14 @@ public class QwenClient {
 
             JsonNode adviceJson = objectMapper.readTree(content);
             return Optional.of(QwenAdviceResult.builder()
+                    .healthScore(number(adviceJson, "healthScore"))
                     .summary(text(adviceJson, "summary"))
                     .riskLevel(text(adviceJson, "riskLevel"))
+                    .estimatedRemainingLiters(number(adviceJson, "estimatedRemainingLiters"))
+                    .estimatedRemainingDays(number(adviceJson, "estimatedRemainingDays"))
                     .maintenancePriority(text(adviceJson, "maintenancePriority"))
-                    .recommendedActions(objectMapper.convertValue(adviceJson.path("recommendedActions"), new TypeReference<List<String>>() {}))
+                    .confidence(text(adviceJson, "confidence"))
+                    .recommendedActions(list(adviceJson, "recommendedActions"))
                     .reasoning(text(adviceJson, "reasoning"))
                     .build());
         } catch (Exception ex) {
@@ -99,6 +104,29 @@ public class QwenClient {
     private static String text(JsonNode node, String field) {
         String value = node.path(field).asText(null);
         return StringUtils.hasText(value) ? value : null;
+    }
+
+    private static Double number(JsonNode node, String field) {
+        JsonNode value = node.path(field);
+        if (value.isNumber()) {
+            return value.asDouble();
+        }
+        if (value.isTextual() && StringUtils.hasText(value.asText())) {
+            try {
+                return Double.parseDouble(value.asText().trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private List<String> list(JsonNode node, String field) {
+        JsonNode value = node.path(field);
+        if (value == null || !value.isArray()) {
+            return List.of();
+        }
+        return objectMapper.convertValue(value, new TypeReference<List<String>>() {});
     }
 
     private static String trimRight(String value, String suffix) {

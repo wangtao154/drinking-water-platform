@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -39,6 +40,9 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
     private static final double PRODUCTION_FLOW_THRESHOLD = 0.001D;
     private static final double PRODUCTION_VOLUME_DELTA_THRESHOLD = 0.01D;
     private static final long PRODUCTION_SESSION_GAP_SECONDS = 300L;
+    private static final double PRODUCTION_PRESSURE_STABLE_FLOW_RATIO = 0.85D;
+    private static final double PRODUCTION_PRESSURE_STABLE_BEFORE_RATIO = 0.85D;
+    private static final Set<String> RISK_LEVELS = Set.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
 
     private static final Map<String, String> FIELD_NAMES = Map.of(
             "P1", "原水TDS",
@@ -126,14 +130,14 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
             dataStatus = "NO_DATA";
         }
 
-        PredictionCalc calc = calculate(stats, rangeDays, ratedPureLiters, dataPointCount, productionContext);
-        RuleAdviceVO ruleAdvice = buildRuleAdvice(calc, dataPointCount, dataStatus);
+        PredictionCalc localCalc = calculate(stats, rangeDays, ratedPureLiters, dataPointCount, productionContext);
+        RuleAdviceVO ruleAdvice = buildRuleAdvice(localCalc, dataPointCount, dataStatus);
         RoMembranePredictionVO base = buildResponse(device, rangeDays, aggregateEvery, ratedPureLiters,
-                dataPointCount, dataStatus, stats, calc, ruleAdvice, null);
+                dataPointCount, dataStatus, stats, localCalc, ruleAdvice, null);
 
-        QwenAdviceVO qwenAdvice = buildQwenAdvice(base);
+        QwenPrimaryPrediction qwenPrediction = buildQwenPrimaryPrediction(base, localCalc, ratedPureLiters);
         return buildResponse(device, rangeDays, aggregateEvery, ratedPureLiters,
-                dataPointCount, dataStatus, stats, calc, ruleAdvice, qwenAdvice);
+                dataPointCount, dataStatus, stats, qwenPrediction.calc(), ruleAdvice, qwenPrediction.qwenAdvice());
     }
 
     private Map<String, MetricStats> queryStats(String sn, int rangeDays, String aggregateEvery) {
@@ -173,10 +177,10 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
                 "from(bucket: \"%s\")\n" +
                 "  |> range(start: -%dd)\n" +
                 "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.sn == \"%s\")\n" +
-                "  |> filter(fn: (r) => contains(value: r._field, set: [\"P7\", \"P12\", \"P18\", \"P19\", \"P23\"]))\n" +
+                "  |> filter(fn: (r) => contains(value: r._field, set: [\"P1\", \"P2\", \"P7\", \"P12\", \"P18\", \"P19\", \"P23\"]))\n" +
                 "  |> filter(fn: (r) => exists r._value)\n" +
                 "  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n" +
-                "  |> keep(columns: [\"_time\", \"P7\", \"P12\", \"P18\", \"P19\", \"P23\"])\n" +
+                "  |> keep(columns: [\"_time\", \"P1\", \"P2\", \"P7\", \"P12\", \"P18\", \"P19\", \"P23\"])\n" +
                 "  |> sort(columns: [\"_time\"])",
                 escapeFluxString(influxBucket), rangeDays, escapeFluxString(sn)
         );
@@ -188,14 +192,17 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
         Double previousPureTotal = null;
         Double productionMembraneBefore = null;
         Double productionMembraneAfter = null;
+        Double productionRawTds = null;
+        Double productionPureTds = null;
         Instant previousProductionAt = null;
-        List<Double> latestProductionBeforeValues = new ArrayList<>();
-        List<Double> latestProductionAfterValues = new ArrayList<>();
+        List<ProductionPressureSample> latestProductionPressureSamples = new ArrayList<>();
         String evidence = null;
 
         List<FluxTable> tables = influxDBClient.getQueryApi().query(flux, influxOrg);
         for (FluxTable table : tables) {
             for (FluxRecord record : table.getRecords()) {
+                Double rawTds = toDouble(record.getValues().get("P1"));
+                Double pureTds = toDouble(record.getValues().get("P2"));
                 Double pureInstantFlow = toDouble(record.getValues().get("P7"));
                 Double pureTotal = toDouble(record.getValues().get("P12"));
                 Double membraneBefore = toDouble(record.getValues().get("P18"));
@@ -221,17 +228,32 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
                     if (statusActive) {
                         productionStatusWindowCount++;
                     }
-                    if (statusActive && membraneBefore != null && membraneAfter != null) {
-                        if (previousProductionAt != null
-                                && recordTime != null
-                                && recordTime.isAfter(previousProductionAt.plusSeconds(PRODUCTION_SESSION_GAP_SECONDS))) {
-                            latestProductionBeforeValues.clear();
-                            latestProductionAfterValues.clear();
+                    if (statusActive
+                            && previousProductionAt != null
+                            && recordTime != null
+                            && recordTime.isAfter(previousProductionAt.plusSeconds(PRODUCTION_SESSION_GAP_SECONDS))) {
+                        latestProductionPressureSamples.clear();
+                    }
+                    if (statusActive
+                            && pureInstantFlow != null
+                            && membraneBefore != null
+                            && membraneAfter != null
+                            && pureInstantFlow > PRODUCTION_FLOW_THRESHOLD
+                            && membraneBefore > membraneAfter) {
+                        latestProductionPressureSamples.add(
+                                new ProductionPressureSample(pureInstantFlow, membraneBefore, membraneAfter, rawTds, pureTds)
+                        );
+                        StableProductionContext stableContext = stableProductionContext(latestProductionPressureSamples);
+                        if (stableContext != null) {
+                            productionMembraneBefore = stableContext.before();
+                            productionMembraneAfter = stableContext.after();
+                            if (stableContext.rawTds() != null) {
+                                productionRawTds = stableContext.rawTds();
+                            }
+                            if (stableContext.pureTds() != null) {
+                                productionPureTds = stableContext.pureTds();
+                            }
                         }
-                        latestProductionBeforeValues.add(membraneBefore);
-                        latestProductionAfterValues.add(membraneAfter);
-                        productionMembraneBefore = median(latestProductionBeforeValues);
-                        productionMembraneAfter = median(latestProductionAfterValues);
                     } else if (fallbackProduction && membraneBefore != null && membraneAfter != null) {
                         productionMembraneBefore = membraneBefore;
                         productionMembraneAfter = membraneAfter;
@@ -250,7 +272,8 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
 
         return new ProductionContext(productionDetected, productionWindowCount,
                 productionStatusWindowCount, hasProductionStatusData,
-                productionMembraneBefore, productionMembraneAfter, evidence, "raw");
+                productionMembraneBefore, productionMembraneAfter,
+                productionRawTds, productionPureTds, evidence, "raw");
     }
 
     private PredictionCalc calculate(Map<String, MetricStats> stats,
@@ -265,6 +288,13 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
         Double pureDelta = delta(stats, "P12");
         Double membraneBefore = last(stats, "P18");
         Double membraneAfter = last(stats, "P19");
+
+        if (productionContext.productionRawTds() != null) {
+            rawTds = productionContext.productionRawTds();
+        }
+        if (productionContext.productionPureTds() != null) {
+            pureTds = productionContext.productionPureTds();
+        }
 
         Double desalinationRate = null;
         if (rawTds != null && pureTds != null && rawTds > 0) {
@@ -369,8 +399,10 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
         }
 
         return new PredictionCalc(score, riskLevel, remainingLiters, remainingDays, dailyPureLiters,
+                productionContext.productionRawTds(), productionContext.productionPureTds(),
                 desalinationRate, wastewaterRatio, pressureDiff, waterProducing,
-                pressureAssessment, pressureAssessmentMessage, reasons);
+                pressureAssessment, pressureAssessmentMessage, reasons,
+                "LOCAL_RULE", null);
     }
 
     private RuleAdviceVO buildRuleAdvice(PredictionCalc calc, int dataPointCount, String dataStatus) {
@@ -414,6 +446,7 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
                     2. waterProducing=true 表示分析周期内检测到制水活动，不等同于接口返回时设备正在制水。
                     3. pressureAssessment=IDLE_IGNORED 或 PRODUCING_PRESSURE_MISSING 时，膜后压力高于膜前压力通常属于停机/非制水状态下的管路残压或储水压力现象，不要作为RO膜异常。
                     4. P18/P19 的 metrics 是分析周期统计值，可能包含非制水状态数据；不要自行用 P18/P19 的平均值、最新值或差值推断压差异常，应以 membranePressureDiff 与 pressureAssessment 为准。
+                    5. productionPureTds 和 productionRawTds 来自最近稳定制水段，已避开启动初期和停机沉淀/回溶影响，判断RO膜脱盐和纯水TDS风险时优先使用它们；metrics.P2 只作为历史统计参考。
 
                     数据：
                     %s
@@ -446,6 +479,150 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
         }
     }
 
+    private QwenPrimaryPrediction buildQwenPrimaryPrediction(RoMembranePredictionVO base,
+                                                             PredictionCalc localCalc,
+                                                             double ratedPureLiters) {
+        if (!qwenClient.isConfigured()) {
+            String reason = "未配置或未启用 Qwen，已使用本地规则兜底预测";
+            return fallbackPrediction(localCalc, "SKIPPED", reason);
+        }
+
+        try {
+            String prompt = """
+                    请作为主预测模型，根据下面的直饮水设备 RO 膜统计数据，直接预测 RO 膜健康分、风险等级、剩余可制纯水量和剩余寿命天数。
+                    输出必须是 JSON，不要输出 Markdown，不要增加未要求字段。
+
+                    必须返回字段：
+                    {
+                      "healthScore": 0-100 的数字,
+                      "riskLevel": "LOW|MEDIUM|HIGH|CRITICAL",
+                      "estimatedRemainingLiters": 非负数字,
+                      "estimatedRemainingDays": 非负数字,
+                      "maintenancePriority": "低|中|高|紧急",
+                      "confidence": "LOW|MEDIUM|HIGH",
+                      "summary": "一句话结论",
+                      "recommendedActions": ["建议1", "建议2"],
+                      "reasoning": "简要说明判断依据"
+                    }
+
+                    判断约束：
+                    1. 顶层 healthScore、riskLevel、estimatedRemainingLiters、estimatedRemainingDays 以你的预测为准，本地 ruleAdvice 只是参考和兜底。
+                    2. productionPureTds 和 productionRawTds 来自最近稳定制水段，判断脱盐率和纯水 TDS 风险时优先使用它们；metrics.P2 只作为历史统计参考。
+                    3. 只有 pressureAssessment=PRODUCING_EVALUATED 时，membranePressureDiff 才可用于判断 RO 膜堵塞或压力异常。
+                    4. P18/P19 的 metrics 可能包含待机数据，不要自行用 P18/P19 的均值、最新值或差值推断压差异常。
+                    5. waterProducing=true 表示分析周期内检测到制水活动，不等同于接口返回时设备正在制水。
+                    6. 剩余升数不能大于 ratedPureLiters 的 1.2 倍，剩余天数应结合 dailyPureLiters 做保守估算。
+
+                    数据：
+                    %s
+                    """.formatted(objectMapper.writeValueAsString(base));
+            Optional<QwenAdviceResult> result = qwenClient.generateAdvice(prompt);
+            if (result.isEmpty()) {
+                String reason = "Qwen 模型未返回有效结果，已使用本地规则兜底预测";
+                return fallbackPrediction(localCalc, "MODEL_ERROR", reason);
+            }
+
+            QwenAdviceResult advice = result.get();
+            String validationError = validateQwenPrediction(advice, ratedPureLiters);
+            if (validationError != null) {
+                String reason = "Qwen 主预测结果未通过校验：" + validationError + "，已使用本地规则兜底预测";
+                return fallbackPrediction(localCalc, "MODEL_ERROR", reason);
+            }
+
+            PredictionCalc qwenCalc = new PredictionCalc(
+                    clamp(advice.getHealthScore(), 0D, 100D),
+                    normalizeRiskLevel(advice.getRiskLevel()),
+                    advice.getEstimatedRemainingLiters(),
+                    advice.getEstimatedRemainingDays(),
+                    localCalc.dailyPureLiters(),
+                    localCalc.productionRawTds(),
+                    localCalc.productionPureTds(),
+                    localCalc.desalinationRate(),
+                    localCalc.wastewaterRatio(),
+                    localCalc.membranePressureDiff(),
+                    localCalc.waterProducing(),
+                    localCalc.pressureAssessment(),
+                    localCalc.pressureAssessmentMessage(),
+                    localCalc.reasons(),
+                    "QWEN_PRIMARY",
+                    null
+            );
+
+            QwenAdviceVO qwenAdvice = QwenAdviceVO.builder()
+                    .status("OK")
+                    .model(qwenClient.getModel())
+                    .healthScore(round(qwenCalc.healthScore()))
+                    .summary(advice.getSummary())
+                    .riskLevel(qwenCalc.riskLevel())
+                    .estimatedRemainingLiters(round(qwenCalc.estimatedRemainingLiters()))
+                    .estimatedRemainingDays(round(qwenCalc.estimatedRemainingDays()))
+                    .maintenancePriority(advice.getMaintenancePriority())
+                    .confidence(advice.getConfidence())
+                    .recommendedActions(advice.getRecommendedActions())
+                    .reasoning(advice.getReasoning())
+                    .build();
+            return new QwenPrimaryPrediction(qwenCalc, qwenAdvice);
+        } catch (Exception ex) {
+            log.warn("[AI] Qwen primary prediction failed: {}", ex.getMessage());
+            String reason = "Qwen 主预测调用异常，已使用本地规则兜底预测";
+            return fallbackPrediction(localCalc, "MODEL_ERROR", reason);
+        }
+    }
+
+    private QwenPrimaryPrediction fallbackPrediction(PredictionCalc localCalc, String status, String reason) {
+        PredictionCalc fallbackCalc = withPredictionSource(localCalc, "LOCAL_RULE", reason);
+        QwenAdviceVO qwenAdvice = QwenAdviceVO.builder()
+                .status(status)
+                .model(qwenClient.getModel())
+                .errorMessage(reason)
+                .build();
+        return new QwenPrimaryPrediction(fallbackCalc, qwenAdvice);
+    }
+
+    private PredictionCalc withPredictionSource(PredictionCalc calc, String source, String fallbackReason) {
+        return new PredictionCalc(
+                calc.healthScore(),
+                calc.riskLevel(),
+                calc.estimatedRemainingLiters(),
+                calc.estimatedRemainingDays(),
+                calc.dailyPureLiters(),
+                calc.productionRawTds(),
+                calc.productionPureTds(),
+                calc.desalinationRate(),
+                calc.wastewaterRatio(),
+                calc.membranePressureDiff(),
+                calc.waterProducing(),
+                calc.pressureAssessment(),
+                calc.pressureAssessmentMessage(),
+                calc.reasons(),
+                source,
+                fallbackReason
+        );
+    }
+
+    private String validateQwenPrediction(QwenAdviceResult advice, double ratedPureLiters) {
+        if (!isFinite(advice.getHealthScore())) {
+            return "healthScore 缺失或不是有效数字";
+        }
+        if (!RISK_LEVELS.contains(normalizeRiskLevel(advice.getRiskLevel()))) {
+            return "riskLevel 必须是 LOW、MEDIUM、HIGH 或 CRITICAL";
+        }
+        if (!isFinite(advice.getEstimatedRemainingLiters()) || advice.getEstimatedRemainingLiters() < 0) {
+            return "estimatedRemainingLiters 缺失或小于 0";
+        }
+        if (!isFinite(advice.getEstimatedRemainingDays()) || advice.getEstimatedRemainingDays() < 0) {
+            return "estimatedRemainingDays 缺失或小于 0";
+        }
+        double maxRemainingLiters = Math.max(ratedPureLiters * 1.2D, ratedPureLiters + 100D);
+        if (advice.getEstimatedRemainingLiters() > maxRemainingLiters) {
+            return "estimatedRemainingLiters 超过额定纯水量的合理上限";
+        }
+        if (advice.getEstimatedRemainingDays() > 36500D) {
+            return "estimatedRemainingDays 超过合理上限";
+        }
+        return null;
+    }
+
     private RoMembranePredictionVO buildResponse(DeviceMetadata device,
                                                  int rangeDays,
                                                  String aggregateEvery,
@@ -468,11 +645,15 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
                 .ratedPureLiters(round(ratedPureLiters))
                 .dataPointCount(dataPointCount)
                 .dataStatus(dataStatus)
+                .predictionSource(calc.predictionSource())
+                .predictionFallbackReason(calc.predictionFallbackReason())
                 .healthScore(round(calc.healthScore()))
                 .riskLevel(calc.riskLevel())
                 .estimatedRemainingLiters(round(calc.estimatedRemainingLiters()))
                 .estimatedRemainingDays(round(calc.estimatedRemainingDays()))
                 .dailyPureLiters(round(calc.dailyPureLiters()))
+                .productionRawTds(round(calc.productionRawTds()))
+                .productionPureTds(round(calc.productionPureTds()))
                 .desalinationRate(round(calc.desalinationRate()))
                 .wastewaterRatio(round(calc.wastewaterRatio()))
                 .membranePressureDiff(round(calc.membranePressureDiff()))
@@ -560,6 +741,24 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
         return "LOW";
     }
 
+    private static String normalizeRiskLevel(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim().toUpperCase();
+    }
+
+    private static boolean isFinite(Double value) {
+        return value != null && !value.isNaN() && !value.isInfinite();
+    }
+
+    private static double clamp(Double value, double min, double max) {
+        if (!isFinite(value)) {
+            return min;
+        }
+        return Math.max(min, Math.min(max, value));
+    }
+
     private static Double round(Double value) {
         if (value == null || value.isNaN() || value.isInfinite()) {
             return null;
@@ -579,6 +778,56 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
         return (sorted.get(middle - 1) + sorted.get(middle)) / 2D;
     }
 
+    private static StableProductionContext stableProductionContext(List<ProductionPressureSample> samples) {
+        if (samples == null || samples.isEmpty()) {
+            return null;
+        }
+        double maxFlow = samples.stream()
+                .mapToDouble(ProductionPressureSample::flow)
+                .max()
+                .orElse(0D);
+        if (maxFlow <= 0D) {
+            return null;
+        }
+        double stableFlow = maxFlow * PRODUCTION_PRESSURE_STABLE_FLOW_RATIO;
+        double maxBefore = samples.stream()
+                .filter(sample -> sample.flow() >= stableFlow)
+                .mapToDouble(ProductionPressureSample::before)
+                .max()
+                .orElse(0D);
+        if (maxBefore <= 0D) {
+            return null;
+        }
+        double stableBefore = maxBefore * PRODUCTION_PRESSURE_STABLE_BEFORE_RATIO;
+        List<ProductionPressureSample> stableSamples = samples.stream()
+                .filter(sample -> sample.flow() >= stableFlow)
+                .filter(sample -> sample.before() >= stableBefore)
+                .toList();
+        List<Double> beforeValues = stableSamples.stream()
+                .map(ProductionPressureSample::before)
+                .toList();
+        List<Double> afterValues = stableSamples.stream()
+                .map(ProductionPressureSample::after)
+                .toList();
+        if (beforeValues.isEmpty() || afterValues.isEmpty()) {
+            return null;
+        }
+        List<Double> rawTdsValues = stableSamples.stream()
+                .map(ProductionPressureSample::rawTds)
+                .filter(value -> value != null)
+                .toList();
+        List<Double> pureTdsValues = stableSamples.stream()
+                .map(ProductionPressureSample::pureTds)
+                .filter(value -> value != null)
+                .toList();
+        return new StableProductionContext(
+                median(beforeValues),
+                median(afterValues),
+                median(rawTdsValues),
+                median(pureTdsValues)
+        );
+    }
+
     private static String escapeFluxString(String value) {
         return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
@@ -589,13 +838,40 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
             Double estimatedRemainingLiters,
             Double estimatedRemainingDays,
             Double dailyPureLiters,
+            Double productionRawTds,
+            Double productionPureTds,
             Double desalinationRate,
             Double wastewaterRatio,
             Double membranePressureDiff,
             Boolean waterProducing,
             String pressureAssessment,
             String pressureAssessmentMessage,
-            List<String> reasons
+            List<String> reasons,
+            String predictionSource,
+            String predictionFallbackReason
+    ) {
+    }
+
+    private record QwenPrimaryPrediction(
+            PredictionCalc calc,
+            QwenAdviceVO qwenAdvice
+    ) {
+    }
+
+    private record ProductionPressureSample(
+            double flow,
+            double before,
+            double after,
+            Double rawTds,
+            Double pureTds
+    ) {
+    }
+
+    private record StableProductionContext(
+            Double before,
+            Double after,
+            Double rawTds,
+            Double pureTds
     ) {
     }
 
@@ -606,11 +882,13 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
             boolean hasProductionStatusData,
             Double productionMembraneBefore,
             Double productionMembraneAfter,
+            Double productionRawTds,
+            Double productionPureTds,
             String evidence,
             String activityWindow
     ) {
         private static ProductionContext empty() {
-            return new ProductionContext(false, 0, 0, false, null, null, null, null);
+            return new ProductionContext(false, 0, 0, false, null, null, null, null, null, null);
         }
 
         private boolean hasProductionPressure() {

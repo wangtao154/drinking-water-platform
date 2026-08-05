@@ -22,12 +22,16 @@ public class RoMembranePredictionVO {
     private Double ratedPureLiters;
     private Integer dataPointCount;
     private String dataStatus;
+    private String predictionSource;
+    private String predictionFallbackReason;
 
     private Double healthScore;
     private String riskLevel;
     private Double estimatedRemainingLiters;
     private Double estimatedRemainingDays;
     private Double dailyPureLiters;
+    private Double productionRawTds;
+    private Double productionPureTds;
     private Double desalinationRate;
     private Double wastewaterRatio;
     private Double membranePressureDiff;

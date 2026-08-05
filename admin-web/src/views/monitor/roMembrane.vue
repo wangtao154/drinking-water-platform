@@ -60,11 +60,29 @@
     <el-empty v-if="!prediction && !predictLoading" description="请选择设备并开始预测" />
 
     <template v-if="prediction">
+      <div class="prediction-source-bar">
+        <el-tag
+          :type="predictionSourceTagType(prediction.predictionSource)"
+          effect="dark"
+          round
+        >
+          {{ predictionSourceLabel(prediction.predictionSource) }}
+        </el-tag>
+        <span v-if="prediction.predictionFallbackReason" class="fallback-reason">
+          {{ prediction.predictionFallbackReason }}
+        </span>
+      </div>
+
       <el-row :gutter="16" class="summary-row">
         <el-col :span="6">
-          <el-card shadow="hover">
+          <el-card shadow="hover" :class="{ 'qwen-card': isQwenPrediction }">
             <div class="stat-item">
-              <div class="stat-label">健康评分</div>
+              <div class="stat-label">
+                健康评分
+                <el-tag size="small" :type="isQwenPrediction ? '' : 'warning'" effect="plain" class="source-tag">
+                  {{ isQwenPrediction ? '千问' : '本地规则' }}
+                </el-tag>
+              </div>
               <div class="score-row">
                 <el-progress
                   type="dashboard"
@@ -83,9 +101,14 @@
           </el-card>
         </el-col>
         <el-col :span="6">
-          <el-card shadow="hover">
+          <el-card shadow="hover" :class="{ 'qwen-card': isQwenPrediction }">
             <div class="stat-item">
-              <div class="stat-label">预计剩余寿命</div>
+              <div class="stat-label">
+                预计剩余寿命
+                <el-tag size="small" :type="isQwenPrediction ? '' : 'warning'" effect="plain" class="source-tag">
+                  {{ isQwenPrediction ? '千问' : '本地规则' }}
+                </el-tag>
+              </div>
               <div class="stat-value">{{ formatNumber(prediction.estimatedRemainingDays, 1) }} 天</div>
               <div class="sub-text">剩余 {{ formatNumber(prediction.estimatedRemainingLiters, 0) }} L</div>
             </div>
@@ -146,6 +169,14 @@
           <el-card shadow="never">
             <template #header>模型状态</template>
             <el-descriptions :column="1" border>
+              <el-descriptions-item label="预测来源">
+                <el-tag :type="predictionSourceTagType(prediction.predictionSource)" effect="dark">
+                  {{ predictionSourceLabel(prediction.predictionSource) }}
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item v-if="prediction.predictionFallbackReason" label="兜底原因">
+                <span class="fallback-text">{{ prediction.predictionFallbackReason }}</span>
+              </el-descriptions-item>
               <el-descriptions-item label="千问状态">
                 <el-tag :type="qwenStatusTag(prediction.qwenAdvice?.status)">
                   {{ qwenStatusLabel(prediction.qwenAdvice?.status) }}
@@ -155,8 +186,8 @@
               <el-descriptions-item label="维护优先级">
                 {{ prediction.qwenAdvice?.maintenancePriority || '-' }}
               </el-descriptions-item>
-              <el-descriptions-item label="规则置信度">
-                {{ confidenceLabel(prediction.ruleAdvice?.confidence) }}
+              <el-descriptions-item label="AI 置信度">
+                {{ confidenceLabel(prediction.qwenAdvice?.confidence) || '-' }}
               </el-descriptions-item>
             </el-descriptions>
           </el-card>
@@ -190,6 +221,25 @@
               :title="prediction.qwenAdvice.errorMessage"
               class="model-alert"
             />
+            <template v-if="prediction.qwenAdvice?.status === 'OK'">
+              <div class="section-title">千问预测值</div>
+              <el-descriptions :column="2" border size="small" class="qwen-pred-stats">
+                <el-descriptions-item label="健康评分">
+                  <span class="qwen-val">{{ formatNumber(prediction.qwenAdvice.healthScore, 1) }}</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="风险等级">
+                  <el-tag :type="riskTagType(prediction.qwenAdvice.riskLevel)" size="small">
+                    {{ riskLabel(prediction.qwenAdvice.riskLevel) }}
+                  </el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="剩余制水">
+                  <span class="qwen-val">{{ formatNumber(prediction.qwenAdvice.estimatedRemainingLiters, 0) }} L</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="剩余天数">
+                  <span class="qwen-val">{{ formatNumber(prediction.qwenAdvice.estimatedRemainingDays, 1) }} 天</span>
+                </el-descriptions-item>
+              </el-descriptions>
+            </template>
             <p class="advice-summary">{{ prediction.qwenAdvice?.summary || '模型暂未返回摘要' }}</p>
             <div class="section-title">维修建议</div>
             <el-empty v-if="!prediction.qwenAdvice?.recommendedActions?.length" description="暂无建议" :image-size="70" />
@@ -257,6 +307,10 @@ const metricOrder = ['P1', 'P2', 'P7', 'P12', 'P15', 'P18', 'P19']
 const scorePercentage = computed(() => {
   const score = Number(prediction.value?.healthScore ?? 0)
   return Math.max(0, Math.min(100, Math.round(score)))
+})
+
+const isQwenPrediction = computed(() => {
+  return prediction.value?.predictionSource === 'QWEN_PRIMARY'
 })
 
 const metricRows = computed<AiMetricVO[]>(() => {
@@ -411,6 +465,24 @@ function pressureAssessmentLabel(row: RoMembranePredictionVO) {
   return map[row.pressureAssessment || ''] || '-'
 }
 
+function predictionSourceLabel(source?: string) {
+  const map: Record<string, string> = {
+    QWEN_PRIMARY: '千问 AI 预测',
+    LOCAL_RULE: '本地规则预测',
+    UNKNOWN: '未知来源'
+  }
+  return map[source || ''] || source || '未知来源'
+}
+
+function predictionSourceTagType(source?: string) {
+  const map: Record<string, '' | 'success' | 'warning' | 'danger' | 'info'> = {
+    QWEN_PRIMARY: '',
+    LOCAL_RULE: 'warning',
+    UNKNOWN: 'info'
+  }
+  return map[source || ''] || 'info'
+}
+
 onMounted(async () => {
   await loadDevices()
 })
@@ -503,5 +575,45 @@ onMounted(async () => {
 
 .model-alert {
   margin-bottom: 12px;
+}
+
+.prediction-source-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 16px;
+  background: #f0f2f5;
+  border-radius: 6px;
+  border-left: 4px solid #409EFF;
+}
+
+.fallback-reason {
+  color: #909399;
+  font-size: 13px;
+}
+
+.qwen-card {
+  border: 1px solid #a0cfff;
+  background: linear-gradient(135deg, #f0f7ff 0%, #fff 100%);
+}
+
+.source-tag {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.qwen-pred-stats {
+  margin-bottom: 14px;
+}
+
+.qwen-val {
+  color: #409EFF;
+  font-weight: 600;
+}
+
+.fallback-text {
+  color: #E6A23C;
+  font-size: 13px;
 }
 </style>
