@@ -44,6 +44,17 @@ public class FilterController {
         return R.ok(filterService.page(query));
     }
 
+    /**
+     * 公开接口：游客查询设备滤芯列表（无需登录）
+     */
+    @GetMapping("/public/device/{deviceId}")
+    public R<PageResult<FilterVO>> getPublicDeviceFilters(@PathVariable String deviceId) {
+        FilterPageQueryDTO query = new FilterPageQueryDTO();
+        query.setCurrentDeviceId(deviceId);
+        query.setPageSize(50);
+        return R.ok(filterService.page(query));
+    }
+
     @PutMapping("/{filterId}")
     public R<FilterVO> update(@PathVariable String filterId, @RequestBody FilterUpdateDTO dto) {
         return R.ok(filterService.update(filterId, dto));

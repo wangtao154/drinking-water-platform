@@ -393,9 +393,10 @@ let currentHistorySeries: HistoryChartSeriesSnapshot[] = []
 // 可绘图测点分组（仅数值型、有趋势意义的测点）
 const chartableGroups = computed(() => {
   const groups: { category: string; label: string; items: { id: string; name: string; unit: string }[] }[] = []
-  const categories: { key: PointCategory; label: string; ids: string[] }[] = [
+  const categories: { key: string; label: string; ids: string[] }[] = [
     { key: 'quality', label: '水质参数', ids: ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'] },
     { key: 'flow', label: '瞬时流量', ids: ['P7', 'P8', 'P9', 'P10', 'P11'] },
+    { key: 'cumulative', label: '累计流量', ids: ['P12', 'P13', 'P14', 'P15', 'P16'] },
     { key: 'pressure', label: '压力数据', ids: ['P17', 'P18', 'P19', 'P20'] },
     { key: 'valve', label: '阀门开度', ids: ['P21', 'P22'] },
   ]

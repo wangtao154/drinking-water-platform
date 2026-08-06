@@ -40,6 +40,14 @@ public class DeviceController {
         return R.ok(deviceService.getDetailByIdOrDeviceId(id));
     }
 
+    /**
+     * 公开接口：游客查询设备详情（无需登录）
+     */
+    @GetMapping("/public/{deviceId}")
+    public R<DeviceVO> getPublicDetail(@PathVariable String deviceId) {
+        return R.ok(deviceService.getDeviceByDeviceId(deviceId));
+    }
+
     @DeleteMapping("/{id}")
     public R<Void> delete(@PathVariable String id) {
         deviceService.deleteByIdOrDeviceId(id);

@@ -21,7 +21,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/actuator/**",
                         "/error",
                         "/api/v1/iot/internal/**",
-                        "/api/v1/iot/mqtt/**"
+                        "/api/v1/iot/mqtt/**",
+                        "/api/v1/iot/public/**"
                 );
     }
 }

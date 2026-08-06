@@ -65,6 +65,15 @@ public class IotController {
     }
 
     /**
+     * 公开接口：游客查询设备最新遥测数据（无需登录）
+     */
+    @GetMapping("/public/devices/{sn}/latest")
+    public R<TelemetryDTO> getPublicLatestTelemetry(@PathVariable String sn) {
+        log.info("Public query latest telemetry for SN: {}", sn);
+        return getLatestTelemetry(sn);
+    }
+
+    /**
      * Query historical telemetry data for charting.
      *
      * @param sn     device serial number

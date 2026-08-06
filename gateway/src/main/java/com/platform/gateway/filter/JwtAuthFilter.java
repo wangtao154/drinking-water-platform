@@ -63,6 +63,9 @@ public class JwtAuthFilter implements GlobalFilter, Ordered {
             "/api/v1/wechat/official/events",
             "/api/v1/water/pay/wechat/notify",
             "/api/v1/water/scan-orders/price-preview",
+            "/api/v1/devices/public/",
+            "/api/v1/iot/public/",
+            "/api/v1/filters/public/",
             "/actuator",
             "/actuator/health",
             "/actuator/info"
