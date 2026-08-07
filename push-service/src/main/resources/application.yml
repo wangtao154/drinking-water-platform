@@ -84,9 +84,12 @@ wechat:
     app-secret: ${WX_OFFICIAL_APPSECRET:mock_official_secret}
     mock: ${WX_OFFICIAL_MOCK:true}
     work-order-assigned-template-id: ${WX_OFFICIAL_WORK_ORDER_ASSIGNED_TEMPLATE_ID:}
+    # 设备上下线通知模板（工单编号=设备ID、故障类型=上/下线、推送时间=变更时间）
+    device-status-template-id: ${WX_OFFICIAL_DEVICE_STATUS_TEMPLATE_ID:LOQvFQLynHxuxGRwLhLfd4N61A4YepFCBkrqajs2zio}
     mini-program-app-id: ${WX_MINI_PROGRAM_APPID:}
     mini-program-jump-enabled: ${WX_OFFICIAL_MINI_PROGRAM_JUMP_ENABLED:false}
     work-order-detail-page: ${WX_WORK_ORDER_DETAIL_PAGE:pages/work-order/detail/index}
+    device-detail-page: ${WX_DEVICE_DETAIL_PAGE:pages/device-detail/device-detail}
 
 # Actuator
 management:

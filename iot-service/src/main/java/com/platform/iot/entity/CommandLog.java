@@ -24,6 +24,9 @@ public class CommandLog extends BaseEntity {
 
     private String status;
 
+    /** 指令类型：SET（配置下发）/ HEARTBEAT（心跳检测） */
+    private String commandType;
+
     private Long operatorId;
 
     private LocalDateTime ackReceivedAt;

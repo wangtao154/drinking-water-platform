@@ -3,6 +3,7 @@ package com.platform.iot.mqtt;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.platform.common.enums.PointMapping;
+import com.platform.common.event.DeviceStatusEvent;
 import com.platform.iot.entity.CommandLog;
 import com.platform.iot.entity.Device;
 import com.platform.iot.entity.DeviceAlert;
@@ -177,12 +178,14 @@ public class MqttMessageHandler {
             return;
         }
 
+        LocalDateTime occurredAt = LocalDateTime.now();
+
         // Record online/offline event
         DeviceOnlineLog onlineLog = new DeviceOnlineLog();
         onlineLog.setSn(sn);
         onlineLog.setDeviceId(device.getDeviceId());
         onlineLog.setEventType(online ? "ONLINE" : "OFFLINE");
-        onlineLog.setOccurredAt(LocalDateTime.now());
+        onlineLog.setOccurredAt(occurredAt);
         deviceOnlineLogMapper.insert(onlineLog);
 
         // Update device online status
@@ -191,6 +194,20 @@ public class MqttMessageHandler {
 
         // Write status to InfluxDB
         influxDbService.writeOnlineStatus(sn, online);
+
+        // Publish device status change event to RabbitMQ (for push-service to send admin notifications)
+        try {
+            DeviceStatusEvent event = DeviceStatusEvent.builder()
+                    .sn(sn)
+                    .deviceId(device.getDeviceId())
+                    .status(online ? "ONLINE" : "OFFLINE")
+                    .occurredAt(occurredAt)
+                    .build();
+            rabbitTemplate.convertAndSend("device.exchange", "device.status.change", event);
+            log.info("Published device status change event: sn={}, status={}", sn, event.getStatus());
+        } catch (Exception e) {
+            log.error("Failed to publish device status change event: {}", e.getMessage());
+        }
     }
 
     public void handleAck(String sn, String payload) {

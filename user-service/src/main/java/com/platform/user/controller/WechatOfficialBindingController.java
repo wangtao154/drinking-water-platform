@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.HtmlUtils;
 
+import java.util.List;
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/v1/wechat/official")
 @RequiredArgsConstructor
@@ -47,6 +50,12 @@ public class WechatOfficialBindingController {
         }
     }
 
+    @GetMapping("/followers")
+    public R<List<Map<String, Object>>> followers() {
+        requireAdmin();
+        return R.ok(bindingService.getFollowers());
+    }
+
     @GetMapping(value = "/events", produces = MediaType.TEXT_PLAIN_VALUE)
     public String verifyEvents(
             @RequestParam String signature,
@@ -56,14 +65,27 @@ public class WechatOfficialBindingController {
         return bindingService.verifyEventCallback(signature, timestamp, nonce, echostr);
     }
 
-    @PostMapping(value = "/events", consumes = MediaType.TEXT_XML_VALUE, produces = MediaType.TEXT_PLAIN_VALUE)
+    @PostMapping(value = "/events", consumes = MediaType.TEXT_XML_VALUE, produces = MediaType.TEXT_XML_VALUE)
     public String receiveEvents(
             @RequestParam String signature,
             @RequestParam String timestamp,
             @RequestParam String nonce,
             @RequestBody String body) {
-        bindingService.handleEventCallback(signature, timestamp, nonce, body);
-        return "success";
+        String reply = bindingService.handleEventCallback(signature, timestamp, nonce, body);
+        return reply != null ? reply : "success";
+    }
+
+    @GetMapping("/admin-openids")
+    public R<List<String>> adminOpenIds() {
+        requireAdmin();
+        return R.ok(bindingService.getAdminOpenIds());
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/admin-openids")
+    public R<Void> removeAdminOpenId(@RequestParam String openid) {
+        requireAdmin();
+        bindingService.removeAdminOpenId(openid);
+        return R.ok();
     }
 
     private Long requireWorker() {
@@ -73,6 +95,14 @@ public class WechatOfficialBindingController {
             throw new BusinessException(ResultCode.FORBIDDEN, "仅运维人员可以绑定公众号通知");
         }
         return userId;
+    }
+
+    private void requireAdmin() {
+        Long userId = UserContext.getUserId();
+        String userType = UserContext.getUserType();
+        if (userId == null || !"SUPER_ADMIN".equals(userType)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "仅超级管理员可查看粉丝列表");
+        }
     }
 
     private String htmlPage(String title, String message, boolean success) {

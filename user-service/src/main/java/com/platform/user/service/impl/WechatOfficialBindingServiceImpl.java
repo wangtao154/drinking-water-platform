@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -47,6 +48,7 @@ public class WechatOfficialBindingServiceImpl implements WechatOfficialBindingSe
 
     private static final String STATE_KEY_PREFIX = "wechat:official:bind:";
     private static final String ACCESS_TOKEN_KEY = "wechat:official:access_token";
+    private static final String ADMIN_OPENIDS_KEY = "wechat:official:admin_openids";
 
     private final WorkerMapper workerMapper;
     private final WorkerWechatBindingMapper bindingMapper;
@@ -131,26 +133,72 @@ public class WechatOfficialBindingServiceImpl implements WechatOfficialBindingSe
     }
 
     @Override
-    public void handleEventCallback(String signature, String timestamp, String nonce, String body) {
+    public String handleEventCallback(String signature, String timestamp, String nonce, String body) {
         if (!isValidSignature(signature, timestamp, nonce)) {
             throw new BusinessException(ResultCode.FORBIDDEN, "公众号事件签名校验失败");
         }
         Map<String, String> event = parseWechatEvent(body);
-        String eventType = event.getOrDefault("Event", "").toLowerCase(Locale.ROOT);
+        String msgType = event.getOrDefault("MsgType", "").toLowerCase(Locale.ROOT);
         String officialOpenId = event.get("FromUserName");
         if (!StringUtils.hasText(officialOpenId)) {
             log.warn("[WechatOfficialBinding] 公众号事件缺少 FromUserName: {}", event);
-            return;
+            return null;
         }
 
+        // 文本消息处理
+        if ("text".equals(msgType)) {
+            String content = event.getOrDefault("Content", "").trim();
+            log.info("[WechatOfficialBinding] 收到公众号文本消息: openId={}, content={}", maskOpenId(officialOpenId), content);
+
+            if ("绑定管理员".equals(content) || "管理员".equals(content)) {
+                // 绑定管理员 openid
+                stringRedisTemplate.opsForSet().add(ADMIN_OPENIDS_KEY, officialOpenId);
+                log.info("[WechatOfficialBinding] 管理员openid绑定成功: openId={}", maskOpenId(officialOpenId));
+                return buildTextReply(officialOpenId, event.get("ToUserName"),
+                        "✅ 管理员绑定成功！\n\n您将收到设备上下线通知消息。\n\n发送「取消管理员」可解除绑定。");
+            }
+
+            if ("取消管理员".equals(content) || "解绑管理员".equals(content)) {
+                stringRedisTemplate.opsForSet().remove(ADMIN_OPENIDS_KEY, officialOpenId);
+                log.info("[WechatOfficialBinding] 管理员openid已解绑: openId={}", maskOpenId(officialOpenId));
+                return buildTextReply(officialOpenId, event.get("ToUserName"),
+                        "已解除管理员绑定，不再接收设备通知。");
+            }
+
+            // 其他文本消息
+            return buildTextReply(officialOpenId, event.get("ToUserName"),
+                    "发送「绑定管理员」可接收设备上下线通知");
+        }
+
+        // 事件消息处理
+        String eventType = event.getOrDefault("Event", "").toLowerCase(Locale.ROOT);
         if ("subscribe".equals(eventType)) {
             updateSubscribeStatus(officialOpenId, 1);
         } else if ("unsubscribe".equals(eventType)) {
             updateSubscribeStatus(officialOpenId, 0);
+            // 取消关注时自动移除管理员绑定
+            stringRedisTemplate.opsForSet().remove(ADMIN_OPENIDS_KEY, officialOpenId);
         } else {
             log.debug("[WechatOfficialBinding] 忽略公众号事件: event={}, openId={}",
                     eventType, maskOpenId(officialOpenId));
         }
+        return null;
+    }
+
+    /**
+     * 构造微信文本回复 XML
+     * @param toUser 用户 openid（消息发送方）
+     * @param fromUser 公众号原始 ID（如 gh_xxxxx），来自消息的 ToUserName 字段
+     */
+    private String buildTextReply(String toUser, String fromUser, String content) {
+        long createTime = System.currentTimeMillis() / 1000;
+        return "<xml>"
+                + "<ToUserName><![CDATA[" + toUser + "]]></ToUserName>"
+                + "<FromUserName><![CDATA[" + fromUser + "]]></FromUserName>"
+                + "<CreateTime>" + createTime + "</CreateTime>"
+                + "<MsgType><![CDATA[text]]></MsgType>"
+                + "<Content><![CDATA[" + content + "]]></Content>"
+                + "</xml>";
     }
 
     private void bindWorker(Worker worker, WechatOauthUser oauthUser, int subscribeStatus) {
@@ -287,6 +335,95 @@ public class WechatOfficialBindingServiceImpl implements WechatOfficialBindingSe
         long expiresIn = Math.max(60, root.path("expires_in").asLong(7200) - 300);
         stringRedisTemplate.opsForValue().set(ACCESS_TOKEN_KEY, accessToken, expiresIn, TimeUnit.SECONDS);
         return accessToken;
+    }
+
+    @Override
+    public List<Map<String, Object>> getFollowers() {
+        try {
+            String accessToken = getAccessToken();
+            List<String> openids = new ArrayList<>();
+
+            // 1. 分页拉取全部粉丝 openid
+            String nextOpenid = "";
+            int totalPages = 0;
+            do {
+                String url = "https://api.weixin.qq.com/cgi-bin/user/get?access_token=" + accessToken
+                        + "&next_openid=" + URLEncoder.encode(nextOpenid, StandardCharsets.UTF_8);
+                HttpRequest request = HttpRequest.newBuilder(URI.create(url)).GET().build();
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                JsonNode root = objectMapper.readTree(response.body());
+
+                if (root.has("errcode") && root.path("errcode").asInt() != 0) {
+                    throw new BusinessException(ResultCode.INTERNAL_ERROR,
+                            "拉取粉丝列表失败: " + root.path("errmsg").asText("unknown"));
+                }
+
+                JsonNode dataNode = root.path("data").path("openid");
+                if (dataNode.isArray()) {
+                    for (JsonNode node : dataNode) {
+                        openids.add(node.asText());
+                    }
+                }
+                nextOpenid = root.path("next_openid").asText("");
+                totalPages++;
+            } while (StringUtils.hasText(nextOpenid) && totalPages < 50); // 安全上限 50 页
+
+            log.info("[WechatOfficial] 拉取粉丝列表完成, 总数: {}", openids.size());
+
+            // 2. 逐个查询用户信息（昵称、头像）
+            List<Map<String, Object>> followers = new ArrayList<>();
+            for (String openid : openids) {
+                try {
+                    Map<String, Object> info = fetchUserInfo(accessToken, openid);
+                    followers.add(info);
+                } catch (Exception e) {
+                    // 单个用户查询失败不影响整体
+                    Map<String, Object> info = new java.util.LinkedHashMap<>();
+                    info.put("openid", openid);
+                    info.put("nickname", "(查询失败)");
+                    info.put("avatar", "");
+                    followers.add(info);
+                    log.warn("[WechatOfficial] 查询用户信息失败: openid={}, err={}", maskOpenId(openid), e.getMessage());
+                }
+            }
+            return followers;
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ResultCode.INTERNAL_ERROR, "获取粉丝列表失败: " + e.getMessage());
+        }
+    }
+
+    private Map<String, Object> fetchUserInfo(String accessToken, String openid) throws Exception {
+        String url = "https://api.weixin.qq.com/cgi-bin/user/info?access_token=" + accessToken
+                + "&openid=" + URLEncoder.encode(openid, StandardCharsets.UTF_8)
+                + "&lang=zh_CN";
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url)).GET().build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        JsonNode root = objectMapper.readTree(response.body());
+
+        Map<String, Object> info = new java.util.LinkedHashMap<>();
+        info.put("openid", openid);
+        info.put("nickname", root.path("nickname").asText("(未设置)"));
+        info.put("avatar", root.path("headimgurl").asText(""));
+        info.put("subscribe", root.path("subscribe").asInt(0));
+        long subscribeTime = root.path("subscribe_time").asLong(0);
+        info.put("subscribeTime", subscribeTime > 0
+                ? java.time.Instant.ofEpochSecond(subscribeTime).atZone(java.time.ZoneId.of("Asia/Shanghai")).toString()
+                : "");
+        return info;
+    }
+
+    @Override
+    public List<String> getAdminOpenIds() {
+        Set<String> members = stringRedisTemplate.opsForSet().members(ADMIN_OPENIDS_KEY);
+        return members != null ? new ArrayList<>(members) : new ArrayList<>();
+    }
+
+    @Override
+    public void removeAdminOpenId(String openid) {
+        stringRedisTemplate.opsForSet().remove(ADMIN_OPENIDS_KEY, openid);
+        log.info("[WechatOfficialBinding] 管理员openid已移除: openId={}", maskOpenId(openid));
     }
 
     private void updateSubscribeStatus(String officialOpenId, int subscribeStatus) {

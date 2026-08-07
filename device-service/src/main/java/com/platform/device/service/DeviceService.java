@@ -30,6 +30,16 @@ public interface DeviceService {
 
     DeviceVO getDeviceByDeviceId(String deviceId);
 
+    /**
+     * 重新生成单个设备的二维码
+     */
+    DeviceVO regenerateQrCode(String deviceId);
+
+    /**
+     * 批量重新生成所有设备的二维码
+     */
+    int regenerateAllQrCodes();
+
     DeviceVO update(Long id, DeviceUpdateDTO dto);
 
     /**

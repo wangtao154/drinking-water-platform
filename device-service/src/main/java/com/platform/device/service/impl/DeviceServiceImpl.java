@@ -64,8 +64,10 @@ public class DeviceServiceImpl implements DeviceService {
         device.setLifecycleStatus(DeviceLifecycleStatus.REGISTERED.name());
         device.setOnlineStatus(0);
 
-        // 生成二维码（Base64）
-        String qrContent = "DEVICE:" + dto.getDeviceId();
+        // 生成二维码（Base64）：内容为「扫普通链接二维码打开小程序」的 URL
+        // 微信扫码 → 跳转到小程序 pages/water-scan/water-scan
+        // 路径带 deviceId 参数，旧版小程序也能通过 onLoad 的 deviceId 参数识别
+        String qrContent = "https://zyswx.juconyun.com/wxwater/?deviceId=" + dto.getDeviceId();
         String qrCodeBase64 = QRCodeUtil.generateBase64(qrContent);
         device.setQrCodeUrl(qrCodeBase64);
 
@@ -338,6 +340,34 @@ public class DeviceServiceImpl implements DeviceService {
     public DeviceVO getDeviceByDeviceId(String deviceId) {
         Device device = getDeviceByDeviceIdOrThrow(deviceId);
         return toVO(device);
+    }
+
+    @Override
+    @Transactional
+    public DeviceVO regenerateQrCode(String deviceId) {
+        Device device = getDeviceByDeviceIdOrThrow(deviceId);
+        // 新二维码内容：URL 带查询参数，旧版小程序也能通过 options.deviceId 识别
+        String qrContent = "https://zyswx.juconyun.com/wxwater/?deviceId=" + device.getDeviceId();
+        String qrCodeBase64 = QRCodeUtil.generateBase64(qrContent);
+        device.setQrCodeUrl(qrCodeBase64);
+        deviceMapper.updateById(device);
+        log.info("[Device] 重新生成设备二维码: deviceId={}, content={}", deviceId, qrContent);
+        return toVO(device);
+    }
+
+    @Override
+    public int regenerateAllQrCodes() {
+        List<Device> allDevices = deviceMapper.selectList(null);
+        int count = 0;
+        for (Device device : allDevices) {
+            String qrContent = "https://zyswx.juconyun.com/wxwater/?deviceId=" + device.getDeviceId();
+            String qrCodeBase64 = QRCodeUtil.generateBase64(qrContent);
+            device.setQrCodeUrl(qrCodeBase64);
+            deviceMapper.updateById(device);
+            count++;
+        }
+        log.info("[Device] 批量重新生成设备二维码: 总数={}", count);
+        return count;
     }
 
     @Override

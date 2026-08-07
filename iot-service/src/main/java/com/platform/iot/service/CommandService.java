@@ -96,6 +96,7 @@ public class CommandService {
         commandLog.setPointId(pointID);
         commandLog.setValue(value);
         commandLog.setStatus("PENDING");
+        commandLog.setCommandType("SET");
         commandLog.setOperatorId(operatorId);
         commandLogMapper.insert(commandLog);
         result.setLastMessageId(messageID);
@@ -209,6 +210,47 @@ public class CommandService {
                 .eq(CommandLog::getMessageId, messageId)
                 .eq(CommandLog::getStatus, "SENT")
                 .set(CommandLog::getStatus, "TIMEOUT"));
+    }
+
+    /**
+     * 心跳检测：发送 Q66=1 并等待 ACK，返回设备是否在线
+     *
+     * @param sn 设备 SN
+     * @return true=收到 ACK（在线），false=超时/失败（离线）
+     */
+    public boolean heartbeat(String sn) {
+        Device device = deviceLookupMapper.selectBySn(sn);
+        if (device == null) {
+            return false;
+        }
+
+        String messageID = UUID.randomUUID().toString();
+        CommandLog commandLog = new CommandLog();
+        commandLog.setMessageId(messageID);
+        commandLog.setSn(sn);
+        commandLog.setDeviceId(device.getDeviceId());
+        commandLog.setPointId("Q66");
+        commandLog.setValue("1");
+        commandLog.setStatus("PENDING");
+        commandLog.setCommandType("HEARTBEAT");
+        commandLogMapper.insert(commandLog);
+
+        try {
+            publishSetPayload(sn, "Q66", "1", messageID);
+            markSentIfPending(messageID);
+            CommandLog ackLog = waitForAck(messageID, 10_000L);
+            boolean online = ackLog != null
+                    && ackLog.getAckReceivedAt() != null
+                    && ("ACK".equals(ackLog.getStatus()) || "EXECUTED".equals(ackLog.getStatus()));
+            if (!online) {
+                markTimeoutIfSent(messageID);
+            }
+            return online;
+        } catch (Exception e) {
+            log.warn("[HEARTBEAT] 心跳检测发送失败 sn={}: {}", sn, e.getMessage());
+            markFailed(messageID);
+            return false;
+        }
     }
 
     public CommandLog sendCommand(String sn, Map<String, Object> params, Long operatorId) {

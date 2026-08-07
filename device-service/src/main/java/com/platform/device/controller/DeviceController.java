@@ -76,6 +76,16 @@ public class DeviceController {
         return R.ok(deviceService.getDeviceByDeviceId(deviceId));
     }
 
+    @org.springframework.web.bind.annotation.PostMapping("/{deviceId}/qrcode/regenerate")
+    public R<DeviceVO> regenerateQrCode(@PathVariable String deviceId) {
+        return R.ok(deviceService.regenerateQrCode(deviceId));
+    }
+
+    @org.springframework.web.bind.annotation.PostMapping("/qrcode/regenerate-all")
+    public R<Integer> regenerateAllQrCodes() {
+        return R.ok(deviceService.regenerateAllQrCodes());
+    }
+
     /**
      * C 端：查询当前客户的所有设备
      */

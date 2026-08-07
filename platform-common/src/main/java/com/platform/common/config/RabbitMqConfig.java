@@ -35,6 +35,7 @@ public class RabbitMqConfig {
     public static final String RK_WORK_ORDER_ASSIGNED = "work_order.assigned";
     public static final String RK_WORK_ORDER_COMPLETED = "work_order.completed";
     public static final String RK_SETTLEMENT_DONE = "settlement.done";
+    public static final String RK_DEVICE_STATUS_CHANGE = "device.status.change";
 
     // ==================== Exchange Beans ====================
 
@@ -111,6 +112,11 @@ public class RabbitMqConfig {
     }
 
     @Bean
+    public Queue deviceStatusChangeQueue() {
+        return QueueBuilder.durable("device.status.change.queue").build();
+    }
+
+    @Bean
     public Queue settlementDoneQueue() {
         return QueueBuilder.durable("settlement.done.queue").build();
     }
@@ -155,6 +161,11 @@ public class RabbitMqConfig {
     @Bean
     public Binding workOrderCompletedBinding() {
         return BindingBuilder.bind(workOrderCompletedQueue()).to(workOrderExchange()).with(RK_WORK_ORDER_COMPLETED);
+    }
+
+    @Bean
+    public Binding deviceStatusChangeBinding() {
+        return BindingBuilder.bind(deviceStatusChangeQueue()).to(deviceExchange()).with(RK_DEVICE_STATUS_CHANGE);
     }
 
     @Bean
