@@ -335,7 +335,7 @@ import { Refresh, VideoPause, Connection } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { getDevice } from '@/api/device'
 import { pageFilters } from '@/api/filter'
-import { getLatestTelemetry, sendSetCommand, getHistoryTelemetry } from '@/api/iot'
+import { getLatestTelemetry, sendSetCommand, getHistoryTelemetry, getOnlineStatus } from '@/api/iot'
 import type { DeviceVO, TelemetryVO, FilterInstanceVO } from '@/types/api'
 import { formatDateTime, statusLabel, statusTagType } from '@/utils/format'
 import { getPointInfo, formatPointValue, CATEGORY_LABELS, type PointCategory } from '@/utils/pointMapping'
@@ -350,6 +350,7 @@ const device = reactive<Partial<DeviceVO>>({})
 const telemetry = ref<TelemetryVO | null>(null)
 const autoRefresh = ref(false)
 let refreshTimer: ReturnType<typeof setInterval> | null = null
+let statusSyncTimer: ReturnType<typeof setInterval> | null = null
 
 // 滤芯数据
 const filterLoading = ref(false)
@@ -514,27 +515,52 @@ function filterStatusType(status: string): string {
   return map[status] || 'info'
 }
 
+function applyDeviceOnlineStatus(online: boolean | undefined | null) {
+  if (online === undefined || online === null) return
+  device.onlineStatus = online ? 1 : 0
+}
+
+async function syncDeviceOnlineStatus(sn?: string) {
+  if (!sn) return
+  try {
+    const res = await getOnlineStatus(sn)
+    if (res.code === 200 && res.data) {
+      applyDeviceOnlineStatus(res.data.online)
+    }
+  } catch {
+    // ignore heartbeat status sync failure
+  }
+}
+
 async function loadTelemetry(sn: string) {
   try {
     const res = await getLatestTelemetry(sn)
     if (res.code === 200 && res.data) {
       telemetry.value = res.data
-      // 同步设备在线状态：遥测数据在线 → 设备在线
-      if (res.data.online && device.onlineStatus !== 1) {
-        try {
-          const devRes = await getDevice(deviceId)
-          if (devRes.code === 200 && devRes.data) {
-            Object.assign(device, devRes.data)
-          }
-        } catch {
-          // ignore refresh failure
-        }
-      }
+      await syncDeviceOnlineStatus(sn)
     } else {
       telemetry.value = null
+      await syncDeviceOnlineStatus(sn)
     }
   } catch {
     telemetry.value = null
+    await syncDeviceOnlineStatus(sn)
+  }
+}
+
+function startStatusSyncTimer() {
+  stopStatusSyncTimer()
+  statusSyncTimer = setInterval(() => {
+    if (device.sn) {
+      syncDeviceOnlineStatus(device.sn)
+    }
+  }, 15000)
+}
+
+function stopStatusSyncTimer() {
+  if (statusSyncTimer) {
+    clearInterval(statusSyncTimer)
+    statusSyncTimer = null
   }
 }
 
@@ -874,12 +900,15 @@ function renderHistoryChart(series: any[], interval: string) {
 onMounted(() => {
   window.addEventListener('resize', handleHistoryResize)
   loadDevice()
+  startStatusSyncTimer()
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleHistoryResize)
+  stopStatusSyncTimer()
   if (refreshTimer) {
     clearInterval(refreshTimer)
+    refreshTimer = null
   }
   if (historyChart) {
     historyChart.off('click', handleHistoryChartClick)

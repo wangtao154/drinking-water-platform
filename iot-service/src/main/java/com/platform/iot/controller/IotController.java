@@ -176,7 +176,8 @@ public class IotController {
         if (device == null) {
             return R.ok(Map.of("sn", sn, "online", false, "message", "Device not found"));
         }
-        return R.ok(Map.of("sn", sn, "online", device.getOnlineStatus() == 1, "deviceId", device.getDeviceId()));
+        boolean online = device.getOnlineStatus() != null && device.getOnlineStatus() == 1;
+        return R.ok(Map.of("sn", sn, "online", online, "deviceId", device.getDeviceId()));
     }
 
     /** 查询当前 MQTT 运行状态（被 system-service 调用） */

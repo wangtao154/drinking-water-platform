@@ -1,7 +1,14 @@
 import { get, post } from '@/utils/request'
-import type { TelemetryVO, R } from '@/types/api'
+import type { TelemetryVO } from '@/types/api'
 
 const BASE = '/v1/iot'
+
+export interface OnlineStatusVO {
+  sn: string
+  online: boolean
+  deviceId?: string
+  message?: string
+}
 
 export function getLatestTelemetry(sn: string) {
   return get<TelemetryVO>(`${BASE}/devices/${sn}/latest`)
@@ -17,7 +24,7 @@ export function sendSetCommand(sn: string, pointID: string, value: string) {
 }
 
 export function getOnlineStatus(sn: string) {
-  return get<boolean>(`${BASE}/devices/${sn}/online-status`)
+  return get<OnlineStatusVO>(`${BASE}/devices/${sn}/online-status`)
 }
 
 /** 查询历史遥测数据（曲线图） */
