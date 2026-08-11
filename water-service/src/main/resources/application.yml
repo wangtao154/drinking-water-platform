@@ -88,6 +88,7 @@ wechat:
     platform-public-key-id: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY_ID:}
     platform-public-key-path: ${WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH:}
     notify-url: ${WECHAT_PAY_NOTIFY_URL:https://zyswx.juconyun.com/api/v1/water/pay/wechat/notify}
+    refund-notify-url: ${WECHAT_PAY_REFUND_NOTIFY_URL:https://zyswx.juconyun.com/api/v1/water/pay/wechat/refund/notify}
     api-base-url: https://api.mch.weixin.qq.com
 
 management:

@@ -49,6 +49,22 @@ public class WaterDispenseOrder extends BaseEntity {
 
     private Boolean mockPayment;
 
+    private String refundStatus;
+
+    private String refundNo;
+
+    private String wechatRefundId;
+
+    private Long refundAmount;
+
+    private String refundReason;
+
+    private LocalDateTime refundRequestedAt;
+
+    private LocalDateTime refundSuccessAt;
+
+    private String refundErrorMsg;
+
     private LocalDateTime paidAt;
 
     private LocalDateTime commandSentAt;

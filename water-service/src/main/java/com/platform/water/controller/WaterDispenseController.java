@@ -52,6 +52,11 @@ public class WaterDispenseController {
         return R.ok(waterDispenseService.prepareWechatPay(orderNo));
     }
 
+    @PostMapping("/scan-orders/{orderNo}/refund/retry")
+    public R<WaterDispenseOrderVO> retryRefund(@PathVariable String orderNo) {
+        return R.ok(waterDispenseService.retryRefund(orderNo));
+    }
+
     @GetMapping("/scan-orders/{orderNo}")
     public R<WaterDispenseOrderVO> getOrder(@PathVariable String orderNo) {
         return R.ok(waterDispenseService.getByOrderNo(orderNo));
@@ -84,6 +89,23 @@ public class WaterDispenseController {
             return ResponseEntity.ok(Map.of("code", "SUCCESS", "message", "success"));
         } catch (Exception e) {
             log.warn("[WechatPay] notify handling failed, serial={}, message={}", serial, e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("code", "FAIL", "message", "fail"));
+        }
+    }
+
+    @PostMapping("/pay/wechat/refund/notify")
+    public ResponseEntity<Map<String, String>> wechatRefundNotify(
+            @RequestHeader(value = "Wechatpay-Timestamp", required = false) String timestamp,
+            @RequestHeader(value = "Wechatpay-Nonce", required = false) String nonce,
+            @RequestHeader(value = "Wechatpay-Signature", required = false) String signature,
+            @RequestHeader(value = "Wechatpay-Serial", required = false) String serial,
+            @RequestBody String body) {
+        try {
+            waterDispenseService.handleWechatRefundNotify(timestamp, nonce, signature, serial, body);
+            return ResponseEntity.ok(Map.of("code", "SUCCESS", "message", "success"));
+        } catch (Exception e) {
+            log.warn("[WechatPay] refund notify handling failed, serial={}, message={}", serial, e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("code", "FAIL", "message", "fail"));
         }

@@ -23,6 +23,8 @@ public class WaterDispenseOrderPageQueryDTO extends PageQueryDTO {
 
     private String commandStatus;
 
+    private String refundStatus;
+
     @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime paidStartTime;
 

@@ -29,7 +29,7 @@
 
     <el-card shadow="never" class="search-card">
       <el-form class="search-form" :model="searchForm" inline>
-        <el-form-item label="关键字">
+        <el-form-item label="关键词">
           <el-input
             v-model="searchForm.keyword"
             placeholder="订单号 / SN / 设备ID / 交易号"
@@ -43,14 +43,17 @@
             <el-option label="全部" value="" />
             <el-option label="待支付" value="PENDING" />
             <el-option label="已支付" value="SUCCESS" />
+            <el-option label="已退款" value="REFUND" />
           </el-select>
         </el-form-item>
         <el-form-item label="出水状态">
           <el-select v-model="searchForm.dispenseStatus" placeholder="全部" clearable style="width: 150px">
             <el-option label="全部" value="" />
             <el-option label="待支付" value="PENDING_PAY" />
-            <el-option label="已支付待下发" value="PAID" />
+            <el-option label="待下发" value="PAID" />
             <el-option label="已下发" value="DISPATCHED" />
+            <el-option label="异常" value="FAILED" />
+            <el-option label="已退款" value="REFUNDED" />
           </el-select>
         </el-form-item>
         <el-form-item label="命令状态">
@@ -60,6 +63,15 @@
             <el-option label="已发送" value="SENT" />
             <el-option label="已确认" value="ACK" />
             <el-option label="异常" value="FAILED" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="退款状态">
+          <el-select v-model="searchForm.refundStatus" placeholder="全部" clearable style="width: 140px">
+            <el-option label="全部" value="" />
+            <el-option label="未退款" value="NONE" />
+            <el-option label="退款中" value="PROCESSING" />
+            <el-option label="已退款" value="SUCCESS" />
+            <el-option label="退款失败" value="FAILED" />
           </el-select>
         </el-form-item>
         <el-form-item label="支付时间">
@@ -113,6 +125,22 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="退款状态" width="115" align="center">
+          <template #default="{ row }">
+            <el-tag :type="refundStatusTag(row.refundStatus)" size="small">
+              {{ refundStatusLabel(row.refundStatus) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="退款金额" width="110" align="right">
+          <template #default="{ row }">{{ row.refundAmount ? `¥${fenToYuan(row.refundAmount)}` : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="退款时间" min-width="170">
+          <template #default="{ row }">{{ row.refundSuccessAt ? formatDateTime(row.refundSuccessAt) : '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="refundErrorMsg" label="退款失败原因" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.refundErrorMsg || '-' }}</template>
+        </el-table-column>
         <el-table-column label="支付方式" width="110">
           <template #default="{ row }">{{ paymentProviderLabel(row.paymentProvider) }}</template>
         </el-table-column>
@@ -130,6 +158,20 @@
         </el-table-column>
         <el-table-column label="创建时间" min-width="170">
           <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" fixed="right" width="110" align="center">
+          <template #default="{ row }">
+            <el-button
+              v-if="canRetryRefund(row)"
+              link
+              type="primary"
+              :loading="retryingOrderNo === row.orderNo"
+              @click="handleRetryRefund(row)"
+            >
+              重试退款
+            </el-button>
+            <span v-else>-</span>
+          </template>
         </el-table-column>
       </el-table>
 
@@ -151,13 +193,15 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { getScanOrderStatistics, pageScanOrders } from '@/api/scanOrder'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getScanOrderStatistics, pageScanOrders, retryScanOrderRefund } from '@/api/scanOrder'
 import type { ScanOrderStatsVO, ScanOrderVO } from '@/types/api'
 import { fenToYuan, formatDateTime } from '@/utils/format'
 
 type TagType = 'success' | 'warning' | 'danger' | 'info' | 'primary'
 
 const loading = ref(false)
+const retryingOrderNo = ref('')
 const tableData = ref<ScanOrderVO[]>([])
 const total = ref(0)
 const statistics = reactive<ScanOrderStatsVO>({
@@ -174,6 +218,7 @@ const searchForm = reactive({
   payStatus: '',
   dispenseStatus: '',
   commandStatus: '',
+  refundStatus: '',
   paidAtRange: [] as string[],
   pageNum: 1,
   pageSize: 10,
@@ -185,6 +230,7 @@ function buildSearchParams() {
     payStatus: searchForm.payStatus || undefined,
     dispenseStatus: searchForm.dispenseStatus || undefined,
     commandStatus: searchForm.commandStatus || undefined,
+    refundStatus: searchForm.refundStatus || undefined,
     paidStartTime: searchForm.paidAtRange?.[0] || undefined,
     paidEndTime: searchForm.paidAtRange?.[1] || undefined,
   }
@@ -197,7 +243,7 @@ async function fetchStatistics() {
       Object.assign(statistics, res.data)
     }
   } catch {
-    // handled by request interceptor
+    // request interceptor already shows the error
   }
 }
 
@@ -229,6 +275,7 @@ function handleReset() {
   searchForm.payStatus = ''
   searchForm.dispenseStatus = ''
   searchForm.commandStatus = ''
+  searchForm.refundStatus = ''
   searchForm.paidAtRange = []
   searchForm.pageNum = 1
   fetchData()
@@ -240,17 +287,51 @@ function handleSizeChange() {
   fetchData()
 }
 
+function canRetryRefund(row: ScanOrderVO): boolean {
+  return row.payStatus === 'SUCCESS'
+    && row.dispenseStatus === 'FAILED'
+    && row.commandStatus === 'FAILED'
+    && (!row.refundStatus || row.refundStatus === 'NONE' || row.refundStatus === 'FAILED')
+}
+
+async function handleRetryRefund(row: ScanOrderVO) {
+  try {
+    await ElMessageBox.confirm(`确认对订单 ${row.orderNo} 重新发起退款？`, '重试退款', {
+      type: 'warning',
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  retryingOrderNo.value = row.orderNo
+  try {
+    const res = await retryScanOrderRefund(row.orderNo)
+    if (res.code === 200) {
+      ElMessage.success('已重新发起退款')
+      await fetchData()
+      await fetchStatistics()
+    }
+  } finally {
+    retryingOrderNo.value = ''
+  }
+}
+
 function payStatusLabel(status: string): string {
   const map: Record<string, string> = {
     PENDING: '待支付',
     SUCCESS: '已支付',
+    REFUND: '已退款',
+    FAIL: '支付失败',
   }
   return map[status] || status || '-'
 }
 
 function payStatusTag(status: string): TagType {
   if (status === 'SUCCESS') return 'success'
+  if (status === 'REFUND') return 'info'
   if (status === 'PENDING') return 'warning'
+  if (status === 'FAIL') return 'danger'
   return 'info'
 }
 
@@ -260,12 +341,14 @@ function dispenseStatusLabel(status: string): string {
     PAID: '待下发',
     DISPATCHED: '已下发',
     FAILED: '异常',
+    REFUNDED: '已退款',
   }
   return map[status] || status || '-'
 }
 
 function dispenseStatusTag(status: string): TagType {
   if (status === 'DISPATCHED') return 'success'
+  if (status === 'REFUNDED') return 'info'
   if (status === 'FAILED') return 'danger'
   if (status === 'PAID') return 'warning'
   if (status === 'PENDING_PAY') return 'info'
@@ -283,10 +366,26 @@ function commandStatusLabel(status: string): string {
 }
 
 function commandStatusTag(status: string): TagType {
-  if (status === 'SENT') return 'success'
-  if (status === 'ACK') return 'success'
+  if (status === 'SENT' || status === 'ACK') return 'success'
   if (status === 'FAILED') return 'danger'
   if (status === 'PENDING') return 'warning'
+  return 'info'
+}
+
+function refundStatusLabel(status?: string): string {
+  const map: Record<string, string> = {
+    NONE: '未退款',
+    PROCESSING: '退款中',
+    SUCCESS: '已退款',
+    FAILED: '退款失败',
+  }
+  return status ? (map[status] || status) : '未退款'
+}
+
+function refundStatusTag(status?: string): TagType {
+  if (status === 'SUCCESS') return 'success'
+  if (status === 'PROCESSING') return 'warning'
+  if (status === 'FAILED') return 'danger'
   return 'info'
 }
 

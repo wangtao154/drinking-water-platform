@@ -20,6 +20,12 @@ public interface WaterDispenseService {
 
     void handleWechatPayNotify(String timestamp, String nonce, String signature, String serial, String body);
 
+    void handleWechatRefundNotify(String timestamp, String nonce, String signature, String serial, String body);
+
+    void autoRefundRecentAbnormalOrders();
+
+    WaterDispenseOrderVO retryRefund(String orderNo);
+
     WaterDispenseOrderVO getByOrderNo(String orderNo);
 
     PageResult<WaterDispenseOrderVO> pageOrders(WaterDispenseOrderPageQueryDTO query);

@@ -44,6 +44,7 @@ public class WechatPayClient {
 
     private static final String AUTH_SCHEMA = "WECHATPAY2-SHA256-RSA2048";
     private static final String JSAPI_PATH = "/v3/pay/transactions/jsapi";
+    private static final String REFUND_PATH = "/v3/refund/domestic/refunds";
     private static final String CERTIFICATES_PATH = "/v3/certificates";
 
     private final WechatPayProperties properties;
@@ -114,6 +115,46 @@ public class WechatPayClient {
         vo.setSignType("RSA");
         vo.setPaySign(sign(message));
         return vo;
+    }
+
+    public JsonNode createRefund(String orderNo, String refundNo, Long refundAmount, Long totalAmount, String reason) {
+        assertConfigured();
+        if (refundAmount == null || refundAmount < 1 || totalAmount == null || totalAmount < 1) {
+            throw new BusinessException(ResultCode.PARAM_INVALID, "wechat refund amount must be positive");
+        }
+        if (!StringUtils.hasText(properties.getRefundNotifyUrl())) {
+            throw new BusinessException(ResultCode.PARAM_INVALID, "wechat refund notify url is empty");
+        }
+        try {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("out_trade_no", orderNo);
+            body.put("out_refund_no", refundNo);
+            body.put("reason", StringUtils.hasText(reason) ? reason : "scan water dispense abnormal");
+            body.put("notify_url", properties.getRefundNotifyUrl());
+            body.put("amount", Map.of(
+                    "refund", BigInteger.valueOf(refundAmount),
+                    "total", BigInteger.valueOf(totalAmount),
+                    "currency", "CNY"));
+
+            String bodyJson = objectMapper.writeValueAsString(body);
+            HttpRequest request = signedRequest("POST", REFUND_PATH, bodyJson)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(bodyJson, StandardCharsets.UTF_8))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.warn("[WechatPay] refund failed: status={}, body={}",
+                        response.statusCode(), sanitizeResponseBody(response.body()));
+                throw new BusinessException(ResultCode.PAYMENT_FAILED, "wechat refund failed");
+            }
+            return objectMapper.readTree(response.body());
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[WechatPay] refund error", e);
+            throw new BusinessException(ResultCode.PAYMENT_FAILED, "wechat refund error: " + e.getMessage());
+        }
     }
 
     public JsonNode decryptAndVerifyNotify(String timestamp, String nonce, String signature, String serial, String body) {
@@ -300,7 +341,7 @@ public class WechatPayClient {
             return "";
         }
         String sanitized = body
-                .replaceAll("(?i)(openid|transaction_id|prepay_id|out_trade_no)\"\\s*:\\s*\"[^\"]+\"", "$1\":\"***\"")
+                .replaceAll("(?i)(openid|transaction_id|prepay_id|out_trade_no|out_refund_no|refund_id)\"\\s*:\\s*\"[^\"]+\"", "$1\":\"***\"")
                 .replaceAll("(?i)(signature|ciphertext)\"\\s*:\\s*\"[^\"]+\"", "$1\":\"***\"");
         return sanitized.substring(0, Math.min(sanitized.length(), 512));
     }

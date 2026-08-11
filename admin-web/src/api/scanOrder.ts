@@ -1,4 +1,4 @@
-import { get } from '@/utils/request'
+import { get, post } from '@/utils/request'
 import type { PageQueryDTO, PageResult, ScanOrderStatsVO, ScanOrderVO } from '@/types/api'
 
 const BASE = '/v1/water/scan-orders'
@@ -9,6 +9,7 @@ export function pageScanOrders(params: PageQueryDTO & {
   payStatus?: string
   dispenseStatus?: string
   commandStatus?: string
+  refundStatus?: string
   paidStartTime?: string
   paidEndTime?: string
 }) {
@@ -22,8 +23,13 @@ export function getScanOrderStatistics(params?: {
   payStatus?: string
   dispenseStatus?: string
   commandStatus?: string
+  refundStatus?: string
   paidStartTime?: string
   paidEndTime?: string
 }) {
   return get<ScanOrderStatsVO>(`${BASE}/statistics`, params)
+}
+
+export function retryScanOrderRefund(orderNo: string) {
+  return post<ScanOrderVO>(`${BASE}/${orderNo}/refund/retry`)
 }

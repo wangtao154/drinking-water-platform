@@ -16,6 +16,14 @@ CREATE TABLE IF NOT EXISTS water_dispense_order (
     prepay_id        VARCHAR(128)           COMMENT 'WeChat Pay prepay_id',
     wx_open_id       VARCHAR(128)           COMMENT 'Payer mini program openid',
     mock_payment     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '1=mock payment',
+    refund_status    VARCHAR(32)  NOT NULL DEFAULT 'NONE' COMMENT 'Refund status: NONE/PROCESSING/SUCCESS/FAILED',
+    refund_no        VARCHAR(64)           COMMENT 'WeChat refund request number',
+    wechat_refund_id VARCHAR(64)           COMMENT 'WeChat refund id',
+    refund_amount    BIGINT                COMMENT 'Refund amount in cents',
+    refund_reason    VARCHAR(255)          COMMENT 'Refund reason',
+    refund_requested_at DATETIME(3)        COMMENT 'Refund requested time',
+    refund_success_at   DATETIME(3)        COMMENT 'Refund success time',
+    refund_error_msg VARCHAR(512)          COMMENT 'Refund error message',
     paid_at          DATETIME(3)           COMMENT 'Paid time',
     command_sent_at  DATETIME(3)           COMMENT 'Q74 command sent time',
     completed_at     DATETIME(3)           COMMENT 'Completed time',
@@ -32,6 +40,8 @@ CREATE TABLE IF NOT EXISTS water_dispense_order (
     KEY idx_water_dispense_sn (sn),
     KEY idx_water_dispense_prepay_id (prepay_id),
     UNIQUE KEY uk_water_dispense_transaction_id (transaction_id),
+    UNIQUE KEY uk_water_dispense_refund_no (refund_no),
+    KEY idx_water_dispense_refund_status (refund_status),
     KEY idx_water_dispense_status (dispense_status),
     KEY idx_water_dispense_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Scan water dispense order';

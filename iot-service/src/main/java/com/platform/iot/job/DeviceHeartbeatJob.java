@@ -45,7 +45,7 @@ public class DeviceHeartbeatJob {
      * 在线设备心跳：每 5 分钟检测一次
      * 确认设备仍然在线，掉线则标记离线
      */
-    @Scheduled(fixedDelay = 300_000, initialDelay = 60_000)
+    @Scheduled(fixedDelay = 30_000, initialDelay = 30_000)
     public void heartbeatOnlineDevices() {
         LambdaQueryWrapper<Device> query = new LambdaQueryWrapper<>();
         query.eq(Device::getLifecycleStatus, "ACTIVATED_ONLINE")

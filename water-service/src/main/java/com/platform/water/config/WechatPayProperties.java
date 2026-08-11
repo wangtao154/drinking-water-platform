@@ -27,5 +27,7 @@ public class WechatPayProperties {
 
     private String notifyUrl;
 
+    private String refundNotifyUrl;
+
     private String apiBaseUrl = "https://api.mch.weixin.qq.com";
 }

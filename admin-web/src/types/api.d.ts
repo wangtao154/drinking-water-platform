@@ -287,6 +287,14 @@ export interface ScanOrderVO {
   transactionId?: string
   paymentProvider?: string
   mockPayment?: boolean
+  refundStatus?: string
+  refundNo?: string
+  wechatRefundId?: string
+  refundAmount?: number
+  refundReason?: string
+  refundRequestedAt?: string
+  refundSuccessAt?: string
+  refundErrorMsg?: string
   paidAt?: string
   commandSentAt?: string
   completedAt?: string

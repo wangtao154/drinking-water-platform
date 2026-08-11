@@ -103,11 +103,9 @@ public class MqttMessageHandler {
             // Write to InfluxDB
             influxDbService.writeTelemetry(sn, points, tags);
 
-            // Update device online status to online when telemetry arrives
-            if (device.getOnlineStatus() == null || device.getOnlineStatus() != 1) {
-                device.setOnlineStatus(1);
-                deviceLookupMapper.updateById(device);
-            }
+            // Telemetry only proves that the device is reporting data.
+            // Controllable online status is determined by Q66 heartbeat ACK.
+            deviceLookupMapper.touchTelemetryReportedAt(device.getId());
 
             log.info("Telemetry processed for SN {}: {} data points", sn, points.size());
 
@@ -178,29 +176,41 @@ public class MqttMessageHandler {
             return;
         }
 
+        if (online) {
+            // LWT online only means the MQTT session is connected; Q66 heartbeat ACK marks controllable online.
+            deviceLookupMapper.touchTelemetryReportedAt(device.getId());
+            influxDbService.writeOnlineStatus(sn, true);
+            log.info("LWT online recorded for SN: {}, waiting for Q66 heartbeat ACK to mark controllable online", sn);
+            return;
+        }
+
         LocalDateTime occurredAt = LocalDateTime.now();
 
-        // Record online/offline event
+        // Record offline event
         DeviceOnlineLog onlineLog = new DeviceOnlineLog();
         onlineLog.setSn(sn);
         onlineLog.setDeviceId(device.getDeviceId());
-        onlineLog.setEventType(online ? "ONLINE" : "OFFLINE");
+        onlineLog.setEventType("OFFLINE");
         onlineLog.setOccurredAt(occurredAt);
         deviceOnlineLogMapper.insert(onlineLog);
 
-        // Update device online status
-        device.setOnlineStatus(online ? 1 : 0);
-        deviceLookupMapper.updateById(device);
+        // LWT offline can immediately mark the device uncontrollable.
+        if (device.getOnlineStatus() == null || device.getOnlineStatus() != 0) {
+            device.setOnlineStatus(0);
+            deviceLookupMapper.updateById(device);
+        } else {
+            deviceLookupMapper.touchTelemetryReportedAt(device.getId());
+        }
 
         // Write status to InfluxDB
-        influxDbService.writeOnlineStatus(sn, online);
+        influxDbService.writeOnlineStatus(sn, false);
 
         // Publish device status change event to RabbitMQ (for push-service to send admin notifications)
         try {
             DeviceStatusEvent event = DeviceStatusEvent.builder()
                     .sn(sn)
                     .deviceId(device.getDeviceId())
-                    .status(online ? "ONLINE" : "OFFLINE")
+                    .status("OFFLINE")
                     .occurredAt(occurredAt)
                     .build();
             rabbitTemplate.convertAndSend("device.exchange", "device.status.change", event);
