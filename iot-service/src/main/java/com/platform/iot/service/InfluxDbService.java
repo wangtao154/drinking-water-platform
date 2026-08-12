@@ -66,12 +66,13 @@ public class InfluxDbService {
         }
     }
 
-    public void writeOnlineStatus(String sn, boolean online) {
+    public void writeOnlineStatus(String deviceId, String sn, boolean online) {
         try {
             WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
 
             Point point = Point.measurement("device_status")
                     .time(Instant.now(), WritePrecision.MS)
+                    .addTag("device_id", deviceId)
                     .addTag("sn", sn)
                     .addField("online", online ? 1 : 0);
 
@@ -88,22 +89,31 @@ public class InfluxDbService {
      * Returns a map with "timestamp" and "points" keys.
      * Returns null if no data found.
      */
-    public Map<String, Object> queryLatestTelemetry(String sn) {
+    public Map<String, Object> queryLatestTelemetry(String deviceId, String legacySn) {
+        Map<String, Object> result = queryLatestTelemetryByTag("device_id", deviceId);
+        if (result != null) {
+            result.put("deviceId", deviceId);
+            result.put("sn", legacySn);
+        }
+        return result;
+    }
+
+    private Map<String, Object> queryLatestTelemetryByTag(String tagName, String tagValue) {
         try {
             // Flux query: get the last value for each field, grouped by field name
             String flux = String.format(
                     "from(bucket: \"%s\")\n" +
                     "  |> range(start: -24h)\n" +
-                    "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.sn == \"%s\")\n" +
+                    "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.%s == \"%s\")\n" +
                     "  |> group(columns: [\"_field\"])\n" +
                     "  |> last()",
-                    influxBucket, sn
+                    escapeFluxString(influxBucket), tagName, escapeFluxString(tagValue)
             );
 
             List<FluxTable> tables = influxDBClient.getQueryApi().query(flux, influxOrg);
 
             if (tables == null || tables.isEmpty()) {
-                log.info("No telemetry data found in InfluxDB for SN: {}", sn);
+                log.info("No telemetry data found in InfluxDB for {}={}", tagName, tagValue);
                 return null;
             }
 
@@ -136,7 +146,7 @@ public class InfluxDbService {
             }
 
             if (points.isEmpty()) {
-                log.info("No telemetry points found in InfluxDB for SN: {}", sn);
+                log.info("No telemetry points found in InfluxDB for {}={}", tagName, tagValue);
                 return null;
             }
 
@@ -144,11 +154,12 @@ public class InfluxDbService {
             result.put("points", points);
             result.put("timestamp", latestTime != null ? latestTime.toString() : null);
 
-            log.info("Retrieved {} telemetry points for SN: {}", points.size(), sn);
+            log.info("Retrieved {} telemetry points for {}={}", points.size(), tagName, tagValue);
             return result;
 
         } catch (Exception e) {
-            log.error("Failed to query latest telemetry from InfluxDB for SN {}: {}", sn, e.getMessage(), e);
+            log.error("Failed to query latest telemetry from InfluxDB for {}={}: {}",
+                    tagName, tagValue, e.getMessage(), e);
             return null;
         }
     }
@@ -177,8 +188,9 @@ public class InfluxDbService {
      * @param fields optional list of field names (e.g., ["P1","P17"]); if null/empty, returns all fields
      * @return Map with keys: sn, range, interval, series (list of {field, data:[{time, value}]})
      */
-    public Map<String, Object> queryHistoryTelemetry(String sn, String range, List<String> fields) {
-        return queryHistoryTelemetry(sn, range, fields, null);
+    public Map<String, Object> queryHistoryTelemetry(
+            String deviceId, String legacySn, String range, List<String> fields) {
+        return queryHistoryTelemetry(deviceId, legacySn, range, fields, null);
     }
 
     /**
@@ -191,7 +203,19 @@ public class InfluxDbService {
      * @param interval optional aggregation interval; if empty, uses the default interval for the range
      * @return Map with keys: sn, range, interval, series (list of {field, data:[{time, value}]})
      */
-    public Map<String, Object> queryHistoryTelemetry(String sn, String range, List<String> fields, String interval) {
+    public Map<String, Object> queryHistoryTelemetry(
+            String deviceId, String legacySn, String range, List<String> fields, String interval) {
+        Map<String, Object> result = queryHistoryTelemetryByTag(
+                "device_id", deviceId, range, fields, interval);
+        if (result != null) {
+            result.put("deviceId", deviceId);
+            result.put("sn", legacySn);
+        }
+        return result;
+    }
+
+    private Map<String, Object> queryHistoryTelemetryByTag(
+            String tagName, String tagValue, String range, List<String> fields, String interval) {
         try {
             // Parse range to Flux start and aggregation interval
             String fluxStart = parseRangeToFluxStart(range);
@@ -202,8 +226,8 @@ public class InfluxDbService {
             flux.append(String.format(
                     "from(bucket: \"%s\")\n" +
                     "  |> range(start: %s)\n" +
-                    "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.sn == \"%s\")\n",
-                    influxBucket, fluxStart, sn
+                    "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.%s == \"%s\")\n",
+                    escapeFluxString(influxBucket), fluxStart, tagName, escapeFluxString(tagValue)
             ));
 
             // Add field filter if specified
@@ -264,18 +288,23 @@ public class InfluxDbService {
             }
 
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("sn", sn);
             result.put("range", range);
             result.put("interval", queryInterval);
             result.put("series", seriesList);
 
-            log.info("Retrieved {} field series for SN: {}, range: {}", seriesList.size(), sn, range);
+            log.info("Retrieved {} field series for {}={}, range={}",
+                    seriesList.size(), tagName, tagValue, range);
             return result;
 
         } catch (Exception e) {
-            log.error("Failed to query history telemetry for SN {}: {}", sn, e.getMessage(), e);
+            log.error("Failed to query history telemetry for {}={}: {}",
+                    tagName, tagValue, e.getMessage(), e);
             return null;
         }
+    }
+
+    private String escapeFluxString(String value) {
+        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     /**

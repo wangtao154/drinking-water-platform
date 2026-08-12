@@ -179,7 +179,7 @@ public class MqttMessageHandler {
         if (online) {
             // LWT online only means the MQTT session is connected; Q66 heartbeat ACK marks controllable online.
             deviceLookupMapper.touchTelemetryReportedAt(device.getId());
-            influxDbService.writeOnlineStatus(sn, true);
+            influxDbService.writeOnlineStatus(device.getDeviceId(), sn, true);
             log.info("LWT online recorded for SN: {}, waiting for Q66 heartbeat ACK to mark controllable online", sn);
             return;
         }
@@ -203,7 +203,7 @@ public class MqttMessageHandler {
         }
 
         // Write status to InfluxDB
-        influxDbService.writeOnlineStatus(sn, false);
+        influxDbService.writeOnlineStatus(device.getDeviceId(), sn, false);
 
         // Publish device status change event to RabbitMQ (for push-service to send admin notifications)
         try {

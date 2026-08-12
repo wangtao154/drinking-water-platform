@@ -14,6 +14,10 @@ export function getLatestTelemetry(sn: string) {
   return get<TelemetryVO>(`${BASE}/devices/${sn}/latest`)
 }
 
+export function getLatestTelemetryByDeviceId(deviceId: string) {
+  return get<TelemetryVO>(`${BASE}/assets/${deviceId}/latest`)
+}
+
 export function sendCommand(sn: string, data: { command: string; params?: any }) {
   return post<null>(`${BASE}/devices/${sn}/command`, data)
 }
@@ -27,7 +31,15 @@ export function getOnlineStatus(sn: string) {
   return get<OnlineStatusVO>(`${BASE}/devices/${sn}/online-status`)
 }
 
+export function getOnlineStatusByDeviceId(deviceId: string) {
+  return get<OnlineStatusVO>(`${BASE}/assets/${deviceId}/online-status`)
+}
+
 /** 查询历史遥测数据（曲线图） */
 export function getHistoryTelemetry(sn: string, params: { range: string; fields?: string; interval?: string }) {
   return get<any>(`${BASE}/devices/${sn}/history`, params)
+}
+
+export function getHistoryTelemetryByDeviceId(deviceId: string, params: { range: string; fields?: string; interval?: string }) {
+  return get<any>(`${BASE}/assets/${deviceId}/history`, params)
 }

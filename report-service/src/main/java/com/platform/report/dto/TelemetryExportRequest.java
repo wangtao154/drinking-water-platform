@@ -6,7 +6,10 @@ import lombok.Data;
 @Data
 public class TelemetryExportRequest {
 
-    @NotBlank(message = "设备 SN 不能为空")
+    @NotBlank(message = "设备ID不能为空")
+    private String deviceId;
+
+    /** 当前控制板 SN，仅用于导出元数据展示，不参与遥测归属查询。 */
     private String sn;
 
     @NotBlank(message = "导出点位不能为空")

@@ -6,7 +6,6 @@ import com.platform.iot.entity.DeviceOnlineLog;
 import com.platform.iot.mapper.DeviceLookupMapper;
 import com.platform.iot.mapper.DeviceOnlineLogMapper;
 import com.platform.iot.service.CommandService;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -22,7 +21,7 @@ import java.util.concurrent.Executors;
 /**
  * 设备心跳检测定时任务
  *
- * 每 5 分钟遍历所有已激活设备，发送 Q66=1 指令等待 ACK：
+ * 定期遍历所有未退货且已绑定控制板 SN 的设备，发送 Q66=1 指令等待 ACK：
  * - 收到 ACK → 设备在线
  * - 超时未收到 → 设备离线
  *
@@ -42,15 +41,12 @@ public class DeviceHeartbeatJob {
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
 
     /**
-     * 在线设备心跳：每 5 分钟检测一次
+     * 在线设备心跳：每 30 秒检测一次
      * 确认设备仍然在线，掉线则标记离线
      */
     @Scheduled(fixedDelay = 30_000, initialDelay = 30_000)
     public void heartbeatOnlineDevices() {
-        LambdaQueryWrapper<Device> query = new LambdaQueryWrapper<>();
-        query.eq(Device::getLifecycleStatus, "ACTIVATED_ONLINE")
-             .eq(Device::getOnlineStatus, 1);
-        List<Device> devices = deviceLookupMapper.selectList(query);
+        List<Device> devices = deviceLookupMapper.selectHeartbeatCandidates(1);
 
         if (devices.isEmpty()) {
             return;
@@ -68,10 +64,7 @@ public class DeviceHeartbeatJob {
      */
     @Scheduled(fixedDelay = 15_000, initialDelay = 30_000)
     public void heartbeatOfflineDevices() {
-        LambdaQueryWrapper<Device> query = new LambdaQueryWrapper<>();
-        query.eq(Device::getLifecycleStatus, "ACTIVATED_ONLINE")
-             .eq(Device::getOnlineStatus, 0);
-        List<Device> devices = deviceLookupMapper.selectList(query);
+        List<Device> devices = deviceLookupMapper.selectHeartbeatCandidates(0);
 
         if (devices.isEmpty()) {
             return;

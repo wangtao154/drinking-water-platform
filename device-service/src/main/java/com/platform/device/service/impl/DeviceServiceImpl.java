@@ -193,11 +193,13 @@ public class DeviceServiceImpl implements DeviceService {
             deviceBindingMapper.updateById(binding);
         }
 
-        // 更新设备状态为 RETURNED，清除客户关联和激活时间
+        // 退货设备不再对应可用控制板，必须同步清除旧的在线状态。
+        // 心跳任务会跳过 RETURNED 设备，因此不能依赖后续心跳自动修正。
         String fromStatus = device.getLifecycleStatus();
         LambdaUpdateWrapper<Device> updateWrapper = new LambdaUpdateWrapper<>();
         updateWrapper.eq(Device::getDeviceId, deviceId)
                 .set(Device::getLifecycleStatus, DeviceLifecycleStatus.RETURNED.name())
+                .set(Device::getOnlineStatus, 0)
                 .set(Device::getCustomerId, null)
                 .set(Device::getActivatedAt, null)
                 .set(Device::getReturnedAt, LocalDateTime.now());
@@ -432,6 +434,9 @@ public class DeviceServiceImpl implements DeviceService {
                 throw new BusinessException(40901, "网关序列号已存在");
             }
             device.setSn(dto.getSn());
+            // 更换控制板后，旧控制板留下的在线状态不能沿用；
+            // 新控制板必须等到自己的心跳 ACK 后才可显示在线。
+            device.setOnlineStatus(0);
         }
         if (dto.getIccid() != null) {
             device.setIccid(dto.getIccid());

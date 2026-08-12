@@ -335,7 +335,12 @@ import { Refresh, VideoPause, Connection } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { getDevice } from '@/api/device'
 import { pageFilters } from '@/api/filter'
-import { getLatestTelemetry, sendSetCommand, getHistoryTelemetry, getOnlineStatus } from '@/api/iot'
+import {
+  getLatestTelemetryByDeviceId,
+  sendSetCommand,
+  getHistoryTelemetryByDeviceId,
+  getOnlineStatusByDeviceId,
+} from '@/api/iot'
 import type { DeviceVO, TelemetryVO, FilterInstanceVO } from '@/types/api'
 import { formatDateTime, statusLabel, statusTagType } from '@/utils/format'
 import { getPointInfo, formatPointValue, CATEGORY_LABELS, type PointCategory } from '@/utils/pointMapping'
@@ -521,9 +526,9 @@ function applyDeviceOnlineStatus(online: boolean | undefined | null) {
 }
 
 async function syncDeviceOnlineStatus(sn?: string) {
-  if (!sn) return
+  if (!deviceId) return
   try {
-    const res = await getOnlineStatus(sn)
+    const res = await getOnlineStatusByDeviceId(deviceId)
     if (res.code === 200 && res.data) {
       applyDeviceOnlineStatus(res.data.online)
     }
@@ -534,7 +539,7 @@ async function syncDeviceOnlineStatus(sn?: string) {
 
 async function loadTelemetry(sn: string) {
   try {
-    const res = await getLatestTelemetry(sn)
+    const res = await getLatestTelemetryByDeviceId(deviceId)
     if (res.code === 200 && res.data) {
       telemetry.value = res.data
       await syncDeviceOnlineStatus(sn)
@@ -659,7 +664,7 @@ async function loadHistory() {
   clearPinnedHistoryTooltips(false)
   historyLoading.value = true
   try {
-    const res = await getHistoryTelemetry(device.sn, {
+    const res = await getHistoryTelemetryByDeviceId(deviceId, {
       range: historyRange.value,
       fields: selectedFields.value.join(','),
       interval: historyInterval.value === 'auto' ? undefined : historyInterval.value,
@@ -832,7 +837,7 @@ function renderHistoryChart(series: any[], interval: string) {
 
   historyChart.setOption({
     title: {
-      text: `${device.sn} - ${rangeLabels[historyRange.value] || historyRange.value}（间隔: ${interval}）`,
+      text: `设备 ${device.deviceId || '-'} - ${rangeLabels[historyRange.value] || historyRange.value}（间隔: ${interval}）`,
       left: 'center',
       textStyle: { fontSize: 14, fontWeight: 500 },
     },

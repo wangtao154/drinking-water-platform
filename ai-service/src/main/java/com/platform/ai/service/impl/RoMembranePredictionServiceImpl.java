@@ -107,7 +107,7 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
         String dataStatus = "OK";
         Map<String, MetricStats> stats;
         try {
-            stats = queryStats(sn, rangeDays, aggregateEvery);
+            stats = queryStats(device.getDeviceId(), rangeDays, aggregateEvery);
         } catch (Exception ex) {
             log.warn("[AI] Query RO membrane telemetry failed, sn={}, rangeDays={}, error={}",
                     sn, rangeDays, ex.getMessage());
@@ -118,7 +118,7 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
         ProductionContext productionContext = ProductionContext.empty();
         if ("OK".equals(dataStatus)) {
             try {
-                productionContext = queryProductionContext(sn, rangeDays);
+                productionContext = queryProductionContext(device.getDeviceId(), rangeDays);
             } catch (Exception ex) {
                 log.warn("[AI] Query RO membrane production context failed, sn={}, rangeDays={}, error={}",
                         sn, rangeDays, ex.getMessage());
@@ -140,19 +140,19 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
                 dataPointCount, dataStatus, stats, qwenPrediction.calc(), ruleAdvice, qwenPrediction.qwenAdvice());
     }
 
-    private Map<String, MetricStats> queryStats(String sn, int rangeDays, String aggregateEvery) {
+    private Map<String, MetricStats> queryStats(String deviceId, int rangeDays, String aggregateEvery) {
         String fieldList = RO_FIELDS.stream()
                 .map(field -> "\"" + field + "\"")
                 .collect(Collectors.joining(", "));
         String flux = String.format(
                 "from(bucket: \"%s\")\n" +
                 "  |> range(start: -%dd)\n" +
-                "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.sn == \"%s\")\n" +
+                "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.device_id == \"%s\")\n" +
                 "  |> filter(fn: (r) => contains(value: r._field, set: [%s]))\n" +
                 "  |> filter(fn: (r) => exists r._value)\n" +
                 "  |> aggregateWindow(every: %s, fn: mean, createEmpty: false)\n" +
                 "  |> keep(columns: [\"_time\", \"_field\", \"_value\"])",
-                escapeFluxString(influxBucket), rangeDays, escapeFluxString(sn), fieldList, aggregateEvery
+                escapeFluxString(influxBucket), rangeDays, escapeFluxString(deviceId), fieldList, aggregateEvery
         );
 
         Map<String, MetricStats> stats = emptyStats();
@@ -172,17 +172,17 @@ public class RoMembranePredictionServiceImpl implements RoMembranePredictionServ
         return stats;
     }
 
-    private ProductionContext queryProductionContext(String sn, int rangeDays) {
+    private ProductionContext queryProductionContext(String deviceId, int rangeDays) {
         String flux = String.format(
                 "from(bucket: \"%s\")\n" +
                 "  |> range(start: -%dd)\n" +
-                "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.sn == \"%s\")\n" +
+                "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.device_id == \"%s\")\n" +
                 "  |> filter(fn: (r) => contains(value: r._field, set: [\"P1\", \"P2\", \"P7\", \"P12\", \"P18\", \"P19\", \"P23\"]))\n" +
                 "  |> filter(fn: (r) => exists r._value)\n" +
                 "  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n" +
                 "  |> keep(columns: [\"_time\", \"P1\", \"P2\", \"P7\", \"P12\", \"P18\", \"P19\", \"P23\"])\n" +
                 "  |> sort(columns: [\"_time\"])",
-                escapeFluxString(influxBucket), rangeDays, escapeFluxString(sn)
+                escapeFluxString(influxBucket), rangeDays, escapeFluxString(deviceId)
         );
 
         boolean productionDetected = false;

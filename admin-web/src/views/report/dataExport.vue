@@ -11,9 +11,9 @@
       <el-form ref="formRef" :model="form" :rules="rules" label-width="96px">
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="选择设备" prop="sn">
+            <el-form-item label="选择设备" prop="deviceId">
               <el-select
-                v-model="form.sn"
+                v-model="form.deviceId"
                 class="full-width"
                 filterable
                 placeholder="请选择设备"
@@ -21,9 +21,9 @@
               >
                 <el-option
                   v-for="device in devices"
-                  :key="device.sn"
+                  :key="device.deviceId"
                   :label="formatDeviceLabel(device)"
-                  :value="device.sn"
+                  :value="device.deviceId"
                 />
               </el-select>
             </el-form-item>
@@ -100,7 +100,7 @@ import { downloadFile } from '@/utils/format'
 import type { DeviceVO } from '@/types/api'
 
 interface ExportForm {
-  sn: string
+  deviceId: string
   interval: string
   timeRange: string[]
   fields: string[]
@@ -112,14 +112,14 @@ const deviceLoading = ref(false)
 const exporting = ref(false)
 
 const form = reactive<ExportForm>({
-  sn: '',
+  deviceId: '',
   interval: '10m',
   timeRange: [],
   fields: ['P1', 'P2']
 })
 
 const rules: FormRules<ExportForm> = {
-  sn: [{ required: true, message: '请选择设备', trigger: 'change' }],
+  deviceId: [{ required: true, message: '请选择设备', trigger: 'change' }],
   interval: [{ required: true, message: '请选择统计间隔', trigger: 'change' }],
   timeRange: [{
     validator: (_rule, value, callback) => {
@@ -264,8 +264,10 @@ async function handleExport() {
   await formRef.value.validate()
   exporting.value = true
   try {
+    const selectedDevice = devices.value.find(device => device.deviceId === form.deviceId)
     const response = await exportTelemetryReport({
-      sn: form.sn,
+      deviceId: form.deviceId,
+      sn: selectedDevice?.sn,
       fields: form.fields.join(','),
       startTime: form.timeRange[0],
       endTime: form.timeRange[1],
@@ -281,7 +283,7 @@ async function handleExport() {
 }
 
 function handleReset() {
-  form.sn = ''
+  form.deviceId = ''
   form.interval = '10m'
   form.timeRange = []
   form.fields = ['P1', 'P2']

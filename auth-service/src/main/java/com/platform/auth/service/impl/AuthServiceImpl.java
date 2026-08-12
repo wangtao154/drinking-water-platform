@@ -231,7 +231,15 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(ResultCode.TOKEN_INVALID, "refreshToken 已失效，请重新登录");
         }
 
-        // 3. 重新查询用户信息
+        // 小程序用户不在 sys_user 表中，按登录身份刷新对应的客户/运维账号。
+        if ("WORKER".equals(userType)) {
+            return refreshWorkerAccessToken(userId, sessionId, refreshToken);
+        }
+        if ("CUSTOMER".equals(userType) || "GUEST".equals(userType)) {
+            return refreshCustomerAccessToken(userId, userType, sessionId, refreshToken);
+        }
+
+        // 3. 后台账号重新查询用户信息
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null || !"ENABLED".equals(user.getStatus())) {
             throw new BusinessException(ResultCode.ACCOUNT_DISABLED);
@@ -257,12 +265,6 @@ public class AuthServiceImpl implements AuthService {
         currentUser.setUserType(role.getRoleCode());
         currentUser.setPermissions(permissionCodes);
 
-        String newAccessToken = jwtUtil.createAccessToken(currentUser, sessionId);
-        long accessExpire = jwtUtil.getAccessTokenExpire();
-
-        // 5. 更新 Redis 中的 accessToken
-        storeAccessToken(currentUser, newAccessToken, accessExpire);
-
         UserInfoVO userInfo = UserInfoVO.builder()
                 .userId(user.getId())
                 .userName(currentUser.getUserName())
@@ -272,9 +274,70 @@ public class AuthServiceImpl implements AuthService {
                 .permissions(permissionCodes)
                 .build();
 
+        return renewAccessToken(currentUser, sessionId, refreshToken, userInfo);
+    }
+
+    private LoginVO refreshWorkerAccessToken(Long userId, String sessionId, String refreshToken) {
+        Worker worker = workerMapper.selectById(userId);
+        if (worker == null || "DISABLED".equals(worker.getStatus()) || "CANCELLED".equals(worker.getStatus())) {
+            throw new BusinessException(ResultCode.ACCOUNT_DISABLED);
+        }
+
+        CurrentUser currentUser = new CurrentUser();
+        currentUser.setUserId(worker.getId());
+        currentUser.setUserName(worker.getName() != null ? worker.getName() : "运维人员");
+        currentUser.setUserType("WORKER");
+        currentUser.setDealerId(worker.getDealerId());
+        currentUser.setPermissions(new HashSet<>());
+
+        UserInfoVO userInfo = UserInfoVO.builder()
+                .userId(worker.getId())
+                .userName(currentUser.getUserName())
+                .userType("WORKER")
+                .roleCode("WORKER")
+                .roleName("运维人员")
+                .dealerId(worker.getDealerId())
+                .permissions(new HashSet<>())
+                .build();
+        return renewAccessToken(currentUser, sessionId, refreshToken, userInfo);
+    }
+
+    private LoginVO refreshCustomerAccessToken(Long userId, String userType, String sessionId, String refreshToken) {
+        Customer customer = customerMapper.selectById(userId);
+        if (customer == null || "DISABLED".equals(customer.getStatus())
+                || "FROZEN".equals(customer.getStatus()) || "INACTIVE".equals(customer.getStatus())) {
+            throw new BusinessException(ResultCode.ACCOUNT_DISABLED);
+        }
+
+        CurrentUser currentUser = new CurrentUser();
+        currentUser.setUserId(customer.getId());
+        currentUser.setUserName(customer.getName() != null ? customer.getName() : "微信用户");
+        // 保持原会话身份，避免游客审批期间刷新 token 破坏 Redis 单会话键。
+        currentUser.setUserType(userType);
+        currentUser.setDealerId(customer.getDealerId());
+        currentUser.setPermissions(new HashSet<>());
+
+        String roleName = "GUEST".equals(userType) ? "游客" : "客户";
+        UserInfoVO userInfo = UserInfoVO.builder()
+                .userId(customer.getId())
+                .userName(currentUser.getUserName())
+                .userType(userType)
+                .roleCode(userType)
+                .roleName(roleName)
+                .dealerId(customer.getDealerId())
+                .permissions(new HashSet<>())
+                .build();
+        return renewAccessToken(currentUser, sessionId, refreshToken, userInfo);
+    }
+
+    private LoginVO renewAccessToken(CurrentUser currentUser, String sessionId, String refreshToken, UserInfoVO userInfo) {
+        String newAccessToken = jwtUtil.createAccessToken(currentUser, sessionId);
+        long accessExpire = jwtUtil.getAccessTokenExpire();
+        storeAccessToken(currentUser, newAccessToken, accessExpire);
+
         return LoginVO.builder()
                 .accessToken(newAccessToken)
-                .refreshToken(refreshToken)  // refreshToken 不变
+                .refreshToken(refreshToken)
                 .expiresIn(accessExpire)
                 .userInfo(userInfo)
                 .build();

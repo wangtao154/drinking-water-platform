@@ -215,7 +215,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public void exportTelemetry(TelemetryExportRequest request, HttpServletResponse response) throws IOException {
-        String sn = normalizeSn(request.getSn());
+        DeviceIdentity device = resolveDevice(request.getDeviceId(), request.getSn());
         List<String> fields = normalizeFields(request.getFields());
         String interval = normalizeInterval(request.getInterval());
         Instant start = parseTime(request.getStartTime());
@@ -230,25 +230,27 @@ public class ReportServiceImpl implements ReportService {
 
         validateEstimatedExportSize(fields, start, end, interval);
 
-        TreeMap<Instant, Map<String, Object>> rows = queryTelemetryRows(sn, fields, start, end, interval);
-        writeTelemetryWorkbook(sn, fields, start, end, interval, rows, response);
-        log.info("[报表] 设备历史数据导出完成, sn={}, fields={}, rows={}", sn, fields, rows.size());
+        TreeMap<Instant, Map<String, Object>> rows = queryTelemetryRows(
+                "device_id", device.deviceId(), fields, start, end, interval);
+        writeTelemetryWorkbook(device, fields, start, end, interval, rows, response);
+        log.info("[报表] 设备历史数据导出完成, deviceId={}, sn={}, fields={}, rows={}",
+                device.deviceId(), device.sn(), fields, rows.size());
     }
 
     private TreeMap<Instant, Map<String, Object>> queryTelemetryRows(
-            String sn, List<String> fields, Instant start, Instant end, String interval) {
+            String tagName, String tagValue, List<String> fields, Instant start, Instant end, String interval) {
         String fieldList = fields.stream()
                 .map(field -> "\"" + field + "\"")
                 .collect(Collectors.joining(", "));
         String flux = String.format(
                 "from(bucket: \"%s\")\n" +
                 "  |> range(start: time(v: \"%s\"), stop: time(v: \"%s\"))\n" +
-                "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.sn == \"%s\")\n" +
+                "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.%s == \"%s\")\n" +
                 "  |> filter(fn: (r) => contains(value: r._field, set: [%s]))\n" +
                 "  |> filter(fn: (r) => exists r._value)\n" +
                 "  |> aggregateWindow(every: %s, fn: mean, createEmpty: false)\n" +
                 "  |> keep(columns: [\"_time\", \"_field\", \"_value\"])",
-                escapeFluxString(influxBucket), start, end, escapeFluxString(sn), fieldList, interval
+                escapeFluxString(influxBucket), start, end, tagName, escapeFluxString(tagValue), fieldList, interval
         );
 
         List<FluxTable> tables = influxDBClient.getQueryApi().query(flux, influxOrg);
@@ -271,7 +273,7 @@ public class ReportServiceImpl implements ReportService {
     }
 
     private void writeTelemetryWorkbook(
-            String sn,
+            DeviceIdentity device,
             List<String> fields,
             Instant start,
             Instant end,
@@ -302,12 +304,14 @@ public class ReportServiceImpl implements ReportService {
             titleRow.getCell(0).setCellStyle(titleStyle);
 
             Row metaRow = sheet.createRow(1);
-            metaRow.createCell(0).setCellValue("设备SN");
-            metaRow.createCell(1).setCellValue(sn);
-            metaRow.createCell(2).setCellValue("时间范围");
-            metaRow.createCell(3).setCellValue(formatInstant(start) + " 至 " + formatInstant(end));
-            metaRow.createCell(4).setCellValue("间隔");
-            metaRow.createCell(5).setCellValue(interval);
+            metaRow.createCell(0).setCellValue("设备ID");
+            metaRow.createCell(1).setCellValue(device.deviceId());
+            metaRow.createCell(2).setCellValue("当前控制板SN");
+            metaRow.createCell(3).setCellValue(device.sn() == null ? "-" : device.sn());
+            metaRow.createCell(4).setCellValue("时间范围");
+            metaRow.createCell(5).setCellValue(formatInstant(start) + " 至 " + formatInstant(end));
+            metaRow.createCell(6).setCellValue("间隔");
+            metaRow.createCell(7).setCellValue(interval);
 
             Row headerRow = sheet.createRow(3);
             headerRow.createCell(0).setCellValue("时间");
@@ -336,7 +340,7 @@ public class ReportServiceImpl implements ReportService {
 
             response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            String filename = "设备历史数据_" + sn + "_" +
+            String filename = "设备历史数据_" + device.deviceId() + "_" +
                     LocalDateTime.now(CHINA_ZONE).format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".xlsx";
             String encodedFilename = URLEncoder.encode(filename, StandardCharsets.UTF_8).replace("+", "%20");
             response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodedFilename);
@@ -350,6 +354,27 @@ public class ReportServiceImpl implements ReportService {
             throw new IllegalArgumentException("设备 SN 格式不正确");
         }
         return normalized;
+    }
+
+    private DeviceIdentity resolveDevice(String deviceId, String requestedSn) {
+        String normalizedDeviceId = deviceId == null ? "" : deviceId.trim();
+        if (normalizedDeviceId.isEmpty()) {
+            throw new IllegalArgumentException("设备ID不能为空");
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT device_id, sn FROM device WHERE device_id = ? AND deleted = 0 LIMIT 1",
+                normalizedDeviceId);
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException("设备不存在");
+        }
+        String currentSn = rows.get(0).get("sn") == null ? null : String.valueOf(rows.get(0).get("sn"));
+        if (currentSn == null && requestedSn != null && !requestedSn.isBlank()) {
+            currentSn = normalizeSn(requestedSn);
+        }
+        return new DeviceIdentity(normalizedDeviceId, currentSn);
+    }
+
+    private record DeviceIdentity(String deviceId, String sn) {
     }
 
     private List<String> normalizeFields(String fields) {

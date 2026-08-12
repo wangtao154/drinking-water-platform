@@ -46,14 +46,17 @@ public class IotController {
         log.info("Querying latest telemetry for SN: {}", sn);
 
         Device device = deviceLookupMapper.selectBySn(sn);
-        boolean online = device != null && device.getOnlineStatus() != null && device.getOnlineStatus() == 1;
+        if (device == null) {
+            throw new BusinessException(ResultCode.DEVICE_NOT_FOUND, "设备不存在或控制板SN未绑定");
+        }
+        boolean online = device.getOnlineStatus() != null && device.getOnlineStatus() == 1;
 
         TelemetryDTO dto = new TelemetryDTO();
         dto.setDeviceSn(sn);
         dto.setOnline(online);
 
         // Query InfluxDB for latest telemetry data
-        Map<String, Object> influxData = influxDbService.queryLatestTelemetry(sn);
+        Map<String, Object> influxData = influxDbService.queryLatestTelemetry(device.getDeviceId(), sn);
         if (influxData != null) {
             @SuppressWarnings("unchecked")
             Map<String, Object> points = (Map<String, Object>) influxData.get("points");
@@ -64,6 +67,12 @@ public class IotController {
         return R.ok(dto);
     }
 
+    @GetMapping("/assets/{deviceId}/latest")
+    public R<TelemetryDTO> getLatestTelemetryByDeviceId(@PathVariable String deviceId) {
+        Device device = requireDeviceByDeviceId(deviceId);
+        return buildLatestTelemetry(device);
+    }
+
     /**
      * 公开接口：游客查询设备最新遥测数据（无需登录）
      */
@@ -71,6 +80,11 @@ public class IotController {
     public R<TelemetryDTO> getPublicLatestTelemetry(@PathVariable String sn) {
         log.info("Public query latest telemetry for SN: {}", sn);
         return getLatestTelemetry(sn);
+    }
+
+    @GetMapping("/public/assets/{deviceId}/latest")
+    public R<TelemetryDTO> getPublicLatestTelemetryByDeviceId(@PathVariable String deviceId) {
+        return getLatestTelemetryByDeviceId(deviceId);
     }
 
     /**
@@ -100,7 +114,28 @@ public class IotController {
                     .collect(java.util.stream.Collectors.toList());
         }
 
-        Map<String, Object> result = influxDbService.queryHistoryTelemetry(sn, range, fieldList, interval);
+        Device device = deviceLookupMapper.selectBySn(sn);
+        if (device == null) {
+            throw new BusinessException(ResultCode.DEVICE_NOT_FOUND, "设备不存在或控制板SN未绑定");
+        }
+        Map<String, Object> result = influxDbService.queryHistoryTelemetry(
+                device.getDeviceId(), sn, range, fieldList, interval);
+        if (result == null) {
+            return R.fail(500, "查询历史数据失败");
+        }
+        return R.ok(result);
+    }
+
+    @GetMapping("/assets/{deviceId}/history")
+    public R<Map<String, Object>> getHistoryTelemetryByDeviceId(
+            @PathVariable String deviceId,
+            @RequestParam(value = "range", defaultValue = "24h") String range,
+            @RequestParam(value = "fields", required = false) String fields,
+            @RequestParam(value = "interval", required = false) String interval) {
+        Device device = requireDeviceByDeviceId(deviceId);
+        List<String> fieldList = parseFields(fields);
+        Map<String, Object> result = influxDbService.queryHistoryTelemetry(
+                device.getDeviceId(), device.getSn(), range, fieldList, interval);
         if (result == null) {
             return R.fail(500, "查询历史数据失败");
         }
@@ -178,6 +213,50 @@ public class IotController {
         }
         boolean online = device.getOnlineStatus() != null && device.getOnlineStatus() == 1;
         return R.ok(Map.of("sn", sn, "online", online, "deviceId", device.getDeviceId()));
+    }
+
+    @GetMapping("/assets/{deviceId}/online-status")
+    public R<Map<String, Object>> getOnlineStatusByDeviceId(@PathVariable String deviceId) {
+        Device device = requireDeviceByDeviceId(deviceId);
+        boolean online = device.getOnlineStatus() != null && device.getOnlineStatus() == 1;
+        return R.ok(Map.of(
+                "deviceId", device.getDeviceId(),
+                "sn", device.getSn(),
+                "online", online));
+    }
+
+    private Device requireDeviceByDeviceId(String deviceId) {
+        Device device = deviceLookupMapper.selectByDeviceId(deviceId);
+        if (device == null) {
+            throw new BusinessException(ResultCode.DEVICE_NOT_FOUND, "设备不存在");
+        }
+        return device;
+    }
+
+    private R<TelemetryDTO> buildLatestTelemetry(Device device) {
+        boolean online = device.getOnlineStatus() != null && device.getOnlineStatus() == 1;
+        TelemetryDTO dto = new TelemetryDTO();
+        dto.setDeviceSn(device.getSn());
+        dto.setOnline(online);
+        Map<String, Object> influxData = influxDbService.queryLatestTelemetry(
+                device.getDeviceId(), device.getSn());
+        if (influxData != null) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> points = (Map<String, Object>) influxData.get("points");
+            dto.setPoints(points);
+            dto.setTimestamp((String) influxData.get("timestamp"));
+        }
+        return R.ok(dto);
+    }
+
+    private List<String> parseFields(String fields) {
+        if (fields == null || fields.isBlank()) {
+            return null;
+        }
+        return Arrays.stream(fields.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(java.util.stream.Collectors.toList());
     }
 
     /** 查询当前 MQTT 运行状态（被 system-service 调用） */

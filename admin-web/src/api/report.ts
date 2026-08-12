@@ -6,7 +6,8 @@ export type { DashboardVO, ReportDeviceVO, ReportOrderVO, ReportFinanceVO, Repor
 const BASE = '/v1/reports'
 
 export interface TelemetryExportParams {
-  sn: string
+  deviceId: string
+  sn?: string
   fields: string
   startTime: string
   endTime: string
