@@ -90,7 +90,7 @@ minio:
   secret-key: ${MINIO_ROOT_PASSWORD:MinIO@2026}
   bucket: ${MINIO_BUCKET:drinking-water}
   # 外部访问URL（小程序/浏览器访问图片用）
-  external-endpoint: ${MINIO_EXTERNAL_ENDPOINT:http://192.168.21.2:9000}
+  external-endpoint: ${MINIO_EXTERNAL_ENDPOINT:https://zyswx.juconyun.com/files}
 
 # Actuator
 management:
