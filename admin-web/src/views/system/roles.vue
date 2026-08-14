@@ -239,8 +239,8 @@ async function handleSavePermissions() {
   permissionSaving.value = true
   try {
     const checkedKeys = permissionTreeRef.value.getCheckedKeys(false)
-    const halfCheckedKeys = permissionTreeRef.value.getHalfCheckedKeys()
-    const permissionIds = Array.from(new Set([...checkedKeys, ...halfCheckedKeys]))
+    // 半选父节点仅用于界面状态，不能作为实际权限重新写回数据库。
+    const permissionIds = Array.from(new Set(checkedKeys))
       .map(id => Number(id))
       .filter(id => Number.isFinite(id))
     await updateRolePermissions(currentRole.value.id, permissionIds)

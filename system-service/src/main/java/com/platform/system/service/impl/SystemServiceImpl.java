@@ -327,6 +327,14 @@ public class SystemServiceImpl implements SystemService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SysAccountVO createAccount(AccountCreateDTO dto) {
+        if (dto.getRoleId() == null) {
+            throw new BusinessException(ResultCode.PARAM_INVALID, "\u8bf7\u9009\u62e9\u89d2\u8272");
+        }
+        SysRole role = ensureRoleExists(dto.getRoleId());
+        if (!"ENABLED".equals(role.getStatus())) {
+            throw new BusinessException(ResultCode.PARAM_INVALID, "\u6240\u9009\u89d2\u8272\u5df2\u7981\u7528");
+        }
+
         // 检查用户名唯一
         LambdaQueryWrapper<SysAccount> check = new LambdaQueryWrapper<>();
         check.eq(SysAccount::getUsername, dto.getUsername());
@@ -368,7 +376,13 @@ public class SystemServiceImpl implements SystemService {
         entity.setPhone(dto.getPhone());
         entity.setEmail(dto.getEmail());
         entity.setDepartment(dto.getDepartment());
-        if (dto.getRoleId() != null) entity.setRoleId(dto.getRoleId());
+        if (dto.getRoleId() != null) {
+            SysRole role = ensureRoleExists(dto.getRoleId());
+            if (!"ENABLED".equals(role.getStatus())) {
+                throw new BusinessException(ResultCode.PARAM_INVALID, "\u6240\u9009\u89d2\u8272\u5df2\u7981\u7528");
+            }
+            entity.setRoleId(dto.getRoleId());
+        }
         if (StringUtils.hasText(dto.getPassword())) {
             entity.setPassword(passwordEncoder.encode(dto.getPassword()));
         }

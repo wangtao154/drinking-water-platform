@@ -5,7 +5,7 @@
         <h1>直饮水平台</h1>
         <p>管理后台</p>
       </div>
-      <el-form ref="formRef" :model="form" :rules="rules" size="large" @submit.prevent="handleLogin">
+      <el-form ref="formRef" :model="form" :rules="rules" size="large" autocomplete="off" @submit.prevent="handleLogin">
         <el-form-item prop="account">
           <el-input v-model="form.account" placeholder="请输入账号" prefix-icon="User" />
         </el-form-item>
@@ -43,8 +43,8 @@ const formRef = ref<FormInstance>()
 const loading = ref(false)
 
 const form = reactive({
-  account: 'admin',
-  password: 'admin123'
+  account: '',
+  password: ''
 })
 
 const rules: FormRules = {

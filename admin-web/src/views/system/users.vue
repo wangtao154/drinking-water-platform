@@ -90,7 +90,7 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="角色">
+            <el-form-item label="角色" prop="roleId">
               <el-select v-model="formData.roleId" placeholder="选择角色" style="width: 100%">
                 <el-option v-for="r in roleOptions" :key="r.id" :label="r.roleName" :value="r.id" />
               </el-select>
@@ -160,6 +160,7 @@ const formRules = {
   employeeNo: [{ required: true, message: '请输入工号', trigger: 'blur' }],
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+  roleId: [{ required: true, message: '请选择角色', trigger: 'change' }],
 }
 const showResetDialog = ref(false)
 const currentRow = ref<SysAccountVO | null>(null)
@@ -193,12 +194,14 @@ function handleReset() { searchForm.keyword = ''; pagination.pageNum = 1; loadDa
 
 function openCreateDialog() {
   isEdit.value = false
+  formRef.value?.clearValidate()
   Object.assign(formData, { employeeNo: '', username: '', password: '', roleId: undefined, name: '', phone: '', email: '', department: '' })
   showDialog.value = true
 }
 
 function openEditDialog(row: SysAccountVO) {
   isEdit.value = true
+  formRef.value?.clearValidate()
   editingId.value = row.id
   Object.assign(formData, {
     employeeNo: row.employeeNo, username: row.username, password: '',
