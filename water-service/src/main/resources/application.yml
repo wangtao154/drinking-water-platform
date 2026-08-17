@@ -69,8 +69,8 @@ water:
     sign-secret: ${WATER_SCAN_SIGN_SECRET:water-scan-sign-secret-change-me}
     min-pay-amount: ${WATER_SCAN_MIN_PAY_AMOUNT:1}
     unit-price-cents-per-liter: ${WATER_SCAN_UNIT_PRICE_CENTS_PER_LITER:0}
-    cold-unit-price-cents-per-liter: ${WATER_SCAN_COLD_UNIT_PRICE_CENTS_PER_LITER:50}
-    hot-unit-price-cents-per-liter: ${WATER_SCAN_HOT_UNIT_PRICE_CENTS_PER_LITER:80}
+    cold-unit-price-cents-per-liter: ${WATER_SCAN_COLD_UNIT_PRICE_CENTS_PER_LITER:30}
+    hot-unit-price-cents-per-liter: ${WATER_SCAN_HOT_UNIT_PRICE_CENTS_PER_LITER:50}
     min-target-ml: ${WATER_SCAN_MIN_TARGET_ML:100}
     max-target-ml: ${WATER_SCAN_MAX_TARGET_ML:100000}
     default-duration-seconds: 120

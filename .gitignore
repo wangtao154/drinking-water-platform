@@ -17,6 +17,7 @@
 target/
 build/
 dist/
+BOOT-INF/
 *.jar
 *.war
 *.ear

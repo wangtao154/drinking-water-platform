@@ -28,12 +28,12 @@ public class WaterScanProperties {
     /**
      * Cold water price in cents per liter.
      */
-    private Long coldUnitPriceCentsPerLiter = 50L;
+    private Long coldUnitPriceCentsPerLiter = 30L;
 
     /**
      * Hot water price in cents per liter.
      */
-    private Long hotUnitPriceCentsPerLiter = 80L;
+    private Long hotUnitPriceCentsPerLiter = 50L;
 
     private Long minTargetMl = 100L;
 

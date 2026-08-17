@@ -17,6 +17,7 @@ public class WaterDispenseRefundJob {
     public void autoRefundRecentAbnormalOrders() {
         try {
             waterDispenseService.autoRefundRecentAbnormalOrders();
+            waterDispenseService.syncProcessingRefunds();
         } catch (Exception e) {
             log.warn("Scan water auto refund job failed: {}", e.getMessage());
         }

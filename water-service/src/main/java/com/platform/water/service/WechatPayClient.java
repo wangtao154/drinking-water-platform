@@ -157,6 +157,30 @@ public class WechatPayClient {
         }
     }
 
+    public JsonNode queryRefund(String refundNo) {
+        assertConfigured();
+        if (!StringUtils.hasText(refundNo)) {
+            throw new BusinessException(ResultCode.PARAM_INVALID, "wechat refund no is empty");
+        }
+        try {
+            HttpRequest request = signedRequest("GET", REFUND_PATH + "/" + refundNo, "")
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.warn("[WechatPay] refund query failed: status={}, body={}",
+                        response.statusCode(), sanitizeResponseBody(response.body()));
+                throw new BusinessException(ResultCode.PAYMENT_FAILED, "wechat refund query failed");
+            }
+            return objectMapper.readTree(response.body());
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[WechatPay] refund query error", e);
+            throw new BusinessException(ResultCode.PAYMENT_FAILED, "wechat refund query error: " + e.getMessage());
+        }
+    }
+
     public JsonNode decryptAndVerifyNotify(String timestamp, String nonce, String signature, String serial, String body) {
         assertConfigured();
         if (!StringUtils.hasText(timestamp) || !StringUtils.hasText(nonce)

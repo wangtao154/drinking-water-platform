@@ -287,6 +287,25 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
     }
 
     @Override
+    public void syncProcessingRefunds() {
+        List<WaterDispenseOrder> orders = orderMapper.selectList(new LambdaQueryWrapper<WaterDispenseOrder>()
+                .eq(WaterDispenseOrder::getRefundStatus, REFUND_PROCESSING)
+                .eq(WaterDispenseOrder::getPaymentProvider, "WECHAT")
+                .eq(WaterDispenseOrder::getMockPayment, false)
+                .isNotNull(WaterDispenseOrder::getRefundNo)
+                .orderByAsc(WaterDispenseOrder::getRefundRequestedAt)
+                .last("LIMIT 100"));
+        for (WaterDispenseOrder order : orders) {
+            try {
+                syncRefundStatus(order, wechatPayClient.queryRefund(order.getRefundNo()));
+            } catch (Exception e) {
+                log.warn("Scan water refund status sync failed: orderNo={}, message={}",
+                        order.getOrderNo(), e.getMessage());
+            }
+        }
+    }
+
+    @Override
     @Transactional
     public WaterDispenseOrderVO retryRefund(String orderNo) {
         WaterDispenseOrder order = selectOrder(orderNo);
@@ -514,6 +533,33 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
                 .set(WaterDispenseOrder::getRefundSuccessAt, successAt)
                 .set(WaterDispenseOrder::getRefundErrorMsg, null));
         appendEvent(orderNo, "WECHAT_REFUND_SUCCESS", "SUCCESS", "wechat refund success", rawData);
+    }
+
+    private void syncRefundStatus(WaterDispenseOrder order, JsonNode response) {
+        String refundNo = response.path("out_refund_no").asText("");
+        String orderNo = response.path("out_trade_no").asText("");
+        String status = response.path("status").asText("");
+        String refundId = response.path("refund_id").asText("");
+        long refundAmount = response.path("amount").path("refund").asLong(-1);
+        if (!Objects.equals(order.getRefundNo(), refundNo) || !Objects.equals(order.getOrderNo(), orderNo)) {
+            throw new BusinessException(ResultCode.PARAM_INVALID, "wechat refund query result mismatch");
+        }
+        if (refundAmount >= 0 && order.getRefundAmount() != null && !Objects.equals(order.getRefundAmount(), refundAmount)) {
+            throw new BusinessException(ResultCode.PARAM_INVALID, "wechat refund query amount mismatch");
+        }
+
+        String summary = summarizeWechatRefundResponse(response);
+        if ("SUCCESS".equals(status)) {
+            LocalDateTime successTime = parseWechatTime(response.path("success_time").asText(""));
+            markRefundSuccess(order.getOrderNo(), order.getRefundNo(), refundId,
+                    successTime != null ? successTime : LocalDateTime.now(), summary);
+            return;
+        }
+        if (!"PROCESSING".equals(status)) {
+            markRefundFailed(order.getOrderNo(), order.getRefundNo(), refundId,
+                    StringUtils.hasText(status) ? "wechat refund status: " + status : "wechat refund status is empty",
+                    summary);
+        }
     }
 
     private void markRefundFailed(String orderNo, String refundNo, String wechatRefundId,

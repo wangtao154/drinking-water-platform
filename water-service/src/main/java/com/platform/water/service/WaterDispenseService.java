@@ -24,6 +24,8 @@ public interface WaterDispenseService {
 
     void autoRefundRecentAbnormalOrders();
 
+    void syncProcessingRefunds();
+
     WaterDispenseOrderVO retryRefund(String orderNo);
 
     WaterDispenseOrderVO getByOrderNo(String orderNo);
