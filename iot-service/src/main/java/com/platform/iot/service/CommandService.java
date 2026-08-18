@@ -219,6 +219,11 @@ public class CommandService {
      * @return true=收到 ACK（在线），false=超时/失败（离线）
      */
     public boolean heartbeat(String sn) {
+        if (!mqttConfig.isConnected()) {
+            log.warn("[HEARTBEAT] MQTT未连接，跳过心跳发送 sn={}", sn);
+            return false;
+        }
+
         Device device = deviceLookupMapper.selectBySn(sn);
         if (device == null) {
             return false;

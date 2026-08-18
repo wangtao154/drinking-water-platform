@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.*;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.Scheduled;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -60,7 +61,9 @@ public class MqttConfig {
 
             mqttClient = new MqttClient(c.getBroker(), c.getClientId(), new MemoryPersistence());
             MqttConnectOptions options = new MqttConnectOptions();
-            options.setAutomaticReconnect(true);
+            // Reconnect is managed below so a failed automatic reconnect cannot retain a stuck
+            // in-flight QoS queue indefinitely.
+            options.setAutomaticReconnect(false);
             options.setCleanSession(Boolean.TRUE.equals(c.getCleanSession()));
             options.setKeepAliveInterval(c.getKeepAliveInterval() == null ? 60 : c.getKeepAliveInterval());
             options.setConnectionTimeout(10);
@@ -148,6 +151,20 @@ public class MqttConfig {
         } catch (Exception e) {
             log.warn("[MQTT] 拉取新配置失败，保持当前配置: {}", e.getMessage());
         }
+        connectWithCurrentConfig();
+    }
+
+    /**
+     * Recreate a disconnected client instead of leaving heartbeat tasks to publish against a
+     * stale Paho session. The heartbeat cadence remains independent at 30 seconds.
+     */
+    @Scheduled(fixedDelay = 10_000, initialDelay = 10_000)
+    public void ensureConnected() {
+        var cfg = mqttConfigService.getCurrentConfig();
+        if (Boolean.FALSE.equals(cfg.getEnabled()) || isConnected()) {
+            return;
+        }
+        log.warn("[MQTT] 检测到连接断开，尝试重建连接");
         connectWithCurrentConfig();
     }
 

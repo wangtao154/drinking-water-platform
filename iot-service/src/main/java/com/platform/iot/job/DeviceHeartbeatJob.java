@@ -14,7 +14,9 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -39,6 +41,8 @@ public class DeviceHeartbeatJob {
 
     /** 并发线程池，避免大量设备时阻塞 */
     private final ExecutorService executor = Executors.newFixedThreadPool(10);
+    /** 同一控制板的心跳检测只能同时执行一次，避免超时任务重叠。 */
+    private final Set<String> heartbeatInProgress = ConcurrentHashMap.newKeySet();
 
     /**
      * 在线设备心跳：每 30 秒检测一次
@@ -59,10 +63,10 @@ public class DeviceHeartbeatJob {
     }
 
     /**
-     * 离线设备心跳：每 15 秒检测一次
-     * 频繁检测以便设备恢复上线后尽快更新状态
+     * 离线设备心跳：每 30 秒检测一次。
+     * 与在线设备保持一致，避免 MQTT 断线时短周期堆积发布请求。
      */
-    @Scheduled(fixedDelay = 15_000, initialDelay = 30_000)
+    @Scheduled(fixedDelay = 30_000, initialDelay = 30_000)
     public void heartbeatOfflineDevices() {
         List<Device> devices = deviceLookupMapper.selectHeartbeatCandidates(0);
 
@@ -78,12 +82,18 @@ public class DeviceHeartbeatJob {
 
     private void checkSingleDevice(Device device) {
         String sn = device.getSn();
+        if (!heartbeatInProgress.add(sn)) {
+            log.debug("[Heartbeat] 检测仍在执行，跳过重复任务 sn={}", sn);
+            return;
+        }
         try {
             boolean online = commandService.heartbeat(sn);
             updateOnlineStatus(device, online);
         } catch (Exception e) {
             log.warn("[Heartbeat] 设备 {} 心跳检测异常: {}", sn, e.getMessage());
             updateOnlineStatus(device, false);
+        } finally {
+            heartbeatInProgress.remove(sn);
         }
     }
 

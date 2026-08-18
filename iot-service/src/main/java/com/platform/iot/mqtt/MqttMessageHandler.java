@@ -239,6 +239,17 @@ public class MqttMessageHandler {
             // Update command_log
             CommandLog commandLog = commandLogMapper.selectByMessageId(messageId);
             if (commandLog != null) {
+                if (!sn.equals(commandLog.getSn())) {
+                    log.warn("ACK SN does not match command: ackSn={}, commandSn={}, messageId={}",
+                            sn, commandLog.getSn(), messageId);
+                    return;
+                }
+                if (commandLog.getAckReceivedAt() != null) {
+                    // The controller is allowed to send a duplicate ACK, but it must not repeatedly
+                    // update the database or overload the MQTT callback thread.
+                    log.debug("Duplicate ACK ignored: SN={}, messageId={}", sn, messageId);
+                    return;
+                }
                 commandLog.setStatus(status);
                 commandLog.setAckReceivedAt(LocalDateTime.now());
                 commandLogMapper.updateById(commandLog);
