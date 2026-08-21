@@ -49,6 +49,14 @@ export interface RoMembranePredictionVO {
   ratedPureLiters: number
   dataPointCount: number
   dataStatus: string
+  productionSessionCount?: number
+  stableProductionSessionCount?: number
+  productionSampleCount?: number
+  productionDataConfidence?: string
+  dataCoverageDays?: number
+  accumulatedPureLiters?: number
+  observedPureLiters?: number
+  observedWasteLiters?: number
   predictionSource?: string
   predictionFallbackReason?: string
   healthScore: number
@@ -61,6 +69,14 @@ export interface RoMembranePredictionVO {
   desalinationRate: number
   wastewaterRatio: number
   membranePressureDiff: number
+  productionMembraneBefore?: number
+  productionMembraneAfter?: number
+  productionPureFlow?: number
+  membraneBeforeChangePercent?: number
+  membraneAfterChangePercent?: number
+  pureFlowChangePercent?: number
+  pressureFoulingSuspected?: boolean
+  backpressureDropIgnored?: boolean
   waterProducing?: boolean
   pressureAssessment?: string
   pressureAssessmentMessage?: string
@@ -76,6 +92,32 @@ export interface RoMembranePredictionParams {
   ratedPureLiters?: number
 }
 
+export interface AdminAssistantCitationVO {
+  id: string
+  title: string
+  updatedAt?: string
+  sources?: string[]
+}
+
+export interface AdminAssistantDataSourceVO {
+  tool: string
+  title: string
+  status: 'OK' | 'DENIED' | 'UNAVAILABLE' | 'NOT_FOUND'
+  summary: string
+  dataRange: string
+  queriedAt: string
+  facts: Record<string, string | number>
+}
+
+export interface AdminAssistantChatResponse {
+  answer: string
+  model?: string | null
+  fallback: boolean
+  notice: string
+  citations: AdminAssistantCitationVO[]
+  dataSources: AdminAssistantDataSourceVO[]
+}
+
 export function predictRoMembrane(params: RoMembranePredictionParams) {
   return service({
     method: 'GET',
@@ -83,4 +125,13 @@ export function predictRoMembrane(params: RoMembranePredictionParams) {
     params,
     timeout: 180000
   }) as unknown as Promise<{ code: number; message: string; data: RoMembranePredictionVO; timestamp: number }>
+}
+
+export function chatWithAdminAssistant(question: string) {
+  return service({
+    method: 'POST',
+    url: `${BASE}/assistant/chat`,
+    data: { question },
+    timeout: 60000
+  }) as unknown as Promise<{ code: number; message: string; data: AdminAssistantChatResponse; timestamp: number }>
 }

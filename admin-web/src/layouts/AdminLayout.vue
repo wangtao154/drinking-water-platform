@@ -103,6 +103,7 @@
         </router-view>
       </div>
     </div>
+    <AdminAiAssistant v-if="userStore.hasPermission('AI_ASSISTANT_VIEW')" />
   </div>
 </template>
 
@@ -113,6 +114,7 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
 import { constantRoutes, asyncRoutes } from '@/router/routes'
+import AdminAiAssistant from '@/components/AdminAiAssistant.vue'
 
 const route = useRoute()
 const router = useRouter()

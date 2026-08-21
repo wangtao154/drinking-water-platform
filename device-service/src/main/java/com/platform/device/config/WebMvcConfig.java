@@ -22,7 +22,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .excludePathPatterns(
                         "/actuator/**",
                         "/error",
-                        "/api/v1/devices/public/**"
+                        "/api/v1/devices/public/**",
+                        "/api/v1/devices/internal/assistant/**"
                 );
     }
 }

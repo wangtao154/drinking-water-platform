@@ -485,8 +485,11 @@ public class WorkOrderServiceImpl implements WorkOrderService {
             int count = 0;
             for (WorkOrder wo : completedOrders) {
                 if (wo.getAcceptedAt() != null && wo.getCompletedAt() != null) {
-                    long minutes = Duration.between(wo.getAcceptedAt(), wo.getCompletedAt()).toMinutes();
-                    totalHours += minutes / 60.0;
+                    long seconds = Duration.between(wo.getAcceptedAt(), wo.getCompletedAt()).toSeconds();
+                    if (seconds < 0) {
+                        continue;
+                    }
+                    totalHours += seconds / 3600.0;
                     count++;
                 }
             }
@@ -522,6 +525,12 @@ public class WorkOrderServiceImpl implements WorkOrderService {
         }
         if (StringUtils.hasText(query.getTriggerType())) {
             wrapper.eq(WorkOrder::getTriggerType, query.getTriggerType());
+        }
+        if (query.getCreatedStartTime() != null) {
+            wrapper.ge(WorkOrder::getCreatedAt, query.getCreatedStartTime());
+        }
+        if (query.getCreatedEndTime() != null) {
+            wrapper.lt(WorkOrder::getCreatedAt, query.getCreatedEndTime());
         }
         if (extra != null) {
             extra.accept(wrapper);

@@ -32,6 +32,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/v1/water/pay/wechat/notify",
                         "/api/v1/water/pay/wechat/refund/notify",
                         "/api/v1/water/scan-orders/price-preview",
+                        "/api/v1/water/internal/scan-orders/statistics",
                         "/error"
                 );
     }

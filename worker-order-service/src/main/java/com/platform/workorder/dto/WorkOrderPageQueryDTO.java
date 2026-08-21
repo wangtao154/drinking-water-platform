@@ -4,6 +4,8 @@ import com.platform.common.dto.PageQueryDTO;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.time.LocalDateTime;
+
 /**
  * 工单分页查询 DTO
  */
@@ -45,4 +47,10 @@ public class WorkOrderPageQueryDTO extends PageQueryDTO {
      * 关键词搜索（工单号模糊匹配）
      */
     private String keyword;
+
+    /** 工单创建时间起点（包含） */
+    private LocalDateTime createdStartTime;
+
+    /** 工单创建时间终点（不包含） */
+    private LocalDateTime createdEndTime;
 }

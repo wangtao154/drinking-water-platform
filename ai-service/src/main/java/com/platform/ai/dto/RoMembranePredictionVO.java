@@ -22,6 +22,14 @@ public class RoMembranePredictionVO {
     private Double ratedPureLiters;
     private Integer dataPointCount;
     private String dataStatus;
+    private Integer productionSessionCount;
+    private Integer stableProductionSessionCount;
+    private Integer productionSampleCount;
+    private String productionDataConfidence;
+    private Double dataCoverageDays;
+    private Double accumulatedPureLiters;
+    private Double observedPureLiters;
+    private Double observedWasteLiters;
     private String predictionSource;
     private String predictionFallbackReason;
 
@@ -35,6 +43,14 @@ public class RoMembranePredictionVO {
     private Double desalinationRate;
     private Double wastewaterRatio;
     private Double membranePressureDiff;
+    private Double productionMembraneBefore;
+    private Double productionMembraneAfter;
+    private Double productionPureFlow;
+    private Double membraneBeforeChangePercent;
+    private Double membraneAfterChangePercent;
+    private Double pureFlowChangePercent;
+    private Boolean pressureFoulingSuspected;
+    private Boolean backpressureDropIgnored;
     private Boolean waterProducing;
     private String pressureAssessment;
     private String pressureAssessmentMessage;

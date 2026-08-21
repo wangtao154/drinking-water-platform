@@ -165,7 +165,8 @@ INSERT INTO sys_permission (permission_code, permission_name, permission_type, p
 ('SYSTEM_ROLE', '角色管理', 'API', (SELECT id FROM sys_permission p WHERE p.permission_code = 'SYSTEM'), '/api/v1/system/roles', 2, 'ENABLED'),
 ('SYSTEM_ROLE_PERMISSION', '角色授权', 'BUTTON', (SELECT id FROM sys_permission p WHERE p.permission_code = 'SYSTEM'), NULL, 3, 'ENABLED'),
 ('SYSTEM_CONFIG', '系统配置', 'API', (SELECT id FROM sys_permission p WHERE p.permission_code = 'SYSTEM'), '/api/v1/system/configs', 4, 'ENABLED'),
-('SYSTEM_AUDIT', '审计日志', 'API', (SELECT id FROM sys_permission p WHERE p.permission_code = 'SYSTEM'), '/api/v1/system/audit-logs', 5, 'ENABLED')
+('SYSTEM_AUDIT', '审计日志', 'API', (SELECT id FROM sys_permission p WHERE p.permission_code = 'SYSTEM'), '/api/v1/system/audit-logs', 5, 'ENABLED'),
+('AI_ASSISTANT_VIEW', 'AI 助手使用', 'API', 0, '/api/v1/ai/assistant/**', 99, 'ENABLED')
 ON DUPLICATE KEY UPDATE
 permission_name = VALUES(permission_name),
 permission_type = VALUES(permission_type),

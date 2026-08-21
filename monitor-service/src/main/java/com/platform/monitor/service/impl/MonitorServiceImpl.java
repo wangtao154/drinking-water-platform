@@ -88,7 +88,12 @@ public class MonitorServiceImpl implements MonitorService {
 
     @Override
     public AlertStatsVO getAlertStats() {
-        AlertStatsVO stats = deviceAlertMapper.selectAlertStats();
+        return getAlertStats(null, null);
+    }
+
+    @Override
+    public AlertStatsVO getAlertStats(LocalDateTime startTime, LocalDateTime endTime) {
+        AlertStatsVO stats = deviceAlertMapper.selectAlertStatsByTriggeredAt(startTime, endTime);
         if (stats == null) {
             stats = new AlertStatsVO();
             stats.setTotalAlerts(0L);

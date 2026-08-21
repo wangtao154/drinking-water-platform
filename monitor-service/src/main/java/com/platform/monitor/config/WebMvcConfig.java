@@ -32,7 +32,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/**")
                 .excludePathPatterns(
                         "/actuator/**",
-                        "/error"
+                        "/error",
+                        "/api/v1/monitor/internal/assistant/**"
                 );
     }
 }

@@ -10,6 +10,7 @@ import com.platform.report.vo.WorkerReportVO;
 import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 
 /**
  * 报表统计 Service
@@ -17,8 +18,11 @@ import java.io.IOException;
 public interface ReportService {
 
     DashboardVO getDashboard();
+    DashboardVO getDashboard(LocalDateTime startTime, LocalDateTime endTime);
     DeviceReportVO getDeviceReport();
+    DeviceReportVO getDeviceReport(LocalDateTime startTime, LocalDateTime endTime);
     OrderReportVO getOrderReport();
+    OrderReportVO getOrderReport(LocalDateTime startTime, LocalDateTime endTime);
     FinanceReportVO getFinanceReport();
     WorkerReportVO getWorkerReport();
     FlowReportVO getFlowReport();

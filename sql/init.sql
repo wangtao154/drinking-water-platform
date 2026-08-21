@@ -966,6 +966,7 @@ INSERT INTO sys_permission (permission_code, permission_name, permission_type, p
 ('FINANCE', '财务管理', 'MENU', 0, '/finance', 11, 'ENABLED'),
 ('REPORT', '报表中心', 'MENU', 0, '/reports', 12, 'ENABLED'),
 ('SYSTEM', '系统管理', 'MENU', 0, '/system', 13, 'ENABLED'),
+('AI_ASSISTANT_VIEW', 'AI 助手使用', 'API', 0, '/api/v1/ai/assistant/**', 99, 'ENABLED'),
 ('SYSTEM_USER', '账户管理', 'API', 15, '/api/v1/system/users', 1, 'ENABLED'),
 ('SYSTEM_ROLE', '角色管理', 'API', 15, '/api/v1/system/roles', 2, 'ENABLED'),
 ('SYSTEM_CONFIG', '系统配置', 'API', 15, '/api/v1/system/configs', 3, 'ENABLED'),

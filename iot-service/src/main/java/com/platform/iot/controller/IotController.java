@@ -17,8 +17,11 @@ import com.platform.iot.vo.CommandAckResultVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -139,6 +142,31 @@ public class IotController {
         if (result == null) {
             return R.fail(500, "查询历史数据失败");
         }
+        return R.ok(result);
+    }
+
+    /** Internal aggregate used by the AI assistant. Never exposes raw telemetry. */
+    @GetMapping("/internal/assets/{deviceId}/production-summary")
+    public R<Map<String, Object>> getInternalProductionSummary(
+            @PathVariable String deviceId,
+            @RequestParam("startTime") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam("endTime") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime,
+            @RequestHeader(value = INTERNAL_TOKEN_HEADER, required = false) String internalToken) {
+        verifyInternalToken(internalToken);
+        if (!endTime.isAfter(startTime)) {
+            return R.fail(40001, "结束时间必须晚于开始时间");
+        }
+        if (Duration.between(startTime, endTime).compareTo(Duration.ofDays(31)) > 0) {
+            return R.fail(40001, "制水统计时间范围不能超过31天");
+        }
+        Device device = requireDeviceByDeviceId(deviceId);
+        Map<String, Object> result = influxDbService.queryProductionSummary(
+                device.getDeviceId(), startTime, endTime);
+        if (result == null) {
+            return R.fail(500, "查询制水统计失败");
+        }
+        result.put("deviceId", device.getDeviceId());
+        result.put("sn", device.getSn());
         return R.ok(result);
     }
 

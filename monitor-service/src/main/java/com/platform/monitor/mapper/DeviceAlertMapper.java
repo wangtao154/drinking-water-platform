@@ -4,7 +4,10 @@ import com.platform.common.base.BaseMapperPlus;
 import com.platform.monitor.entity.DeviceAlert;
 import com.platform.monitor.vo.AlertStatsVO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+
+import java.time.LocalDateTime;
 
 /**
  * 设备告警 Mapper
@@ -23,4 +26,21 @@ public interface DeviceAlertMapper extends BaseMapperPlus<DeviceAlert> {
             "SUM(CASE WHEN push_status='PUSHED' THEN 1 ELSE 0 END) as pushedAlerts " +
             "FROM device_alert")
     AlertStatsVO selectAlertStats();
+
+    /**
+     * Read-only alert aggregate for a bounded trigger-time range.
+     */
+    @Select("<script>" +
+            "SELECT COUNT(*) as totalAlerts, " +
+            "SUM(CASE WHEN handled_status='UNHANDLED' THEN 1 ELSE 0 END) as unhandledAlerts, " +
+            "SUM(CASE WHEN handled_status='HANDLED' THEN 1 ELSE 0 END) as handledAlerts, " +
+            "SUM(CASE WHEN alert_level='WARNING' THEN 1 ELSE 0 END) as warningAlerts, " +
+            "SUM(CASE WHEN alert_level='ALARM' THEN 1 ELSE 0 END) as alarmAlerts, " +
+            "SUM(CASE WHEN push_status='PUSHED' THEN 1 ELSE 0 END) as pushedAlerts " +
+            "FROM device_alert WHERE deleted = 0 " +
+            "<if test='startTime != null'>AND triggered_at <![CDATA[>=]]> #{startTime} </if>" +
+            "<if test='endTime != null'>AND triggered_at <![CDATA[<]]> #{endTime} </if>" +
+            "</script>")
+    AlertStatsVO selectAlertStatsByTriggeredAt(@Param("startTime") LocalDateTime startTime,
+                                               @Param("endTime") LocalDateTime endTime);
 }

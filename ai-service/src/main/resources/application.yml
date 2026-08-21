@@ -36,6 +36,11 @@ spring:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
 
+jwt:
+  secret: ${JWT_SECRET:drinking-water-platform-jwt-secret-key-please-change-in-production-2026}
+  access-expire: ${JWT_ACCESS_EXPIRE:7200}
+  refresh-expire: ${JWT_REFRESH_EXPIRE:604800}
+
 influxdb:
   url: ${INFLUXDB_URL:http://dw-influxdb:8086}
   token: ${INFLUXDB_TOKEN:drinking-water-super-token-please-change-in-production}
@@ -54,6 +59,23 @@ ai:
     default-rated-pure-liters: ${AI_RO_DEFAULT_RATED_PURE_LITERS:12000}
     default-range-days: ${AI_RO_DEFAULT_RANGE_DAYS:30}
     default-aggregate-every: ${AI_RO_DEFAULT_AGGREGATE_EVERY:30m}
+  assistant:
+    enabled: ${AI_ASSISTANT_ENABLED:true}
+    max-question-chars: ${AI_ASSISTANT_MAX_QUESTION_CHARS:1000}
+    max-knowledge-documents: ${AI_ASSISTANT_MAX_KNOWLEDGE_DOCUMENTS:4}
+    max-knowledge-chars: ${AI_ASSISTANT_MAX_KNOWLEDGE_CHARS:18000}
+    max-answer-chars: ${AI_ASSISTANT_MAX_ANSWER_CHARS:4000}
+    rate-limit-window-seconds: ${AI_ASSISTANT_RATE_LIMIT_WINDOW_SECONDS:60}
+    max-requests-per-user: ${AI_ASSISTANT_MAX_REQUESTS_PER_USER:8}
+    tools:
+      enabled: ${AI_ASSISTANT_TOOLS_ENABLED:true}
+      timeout-seconds: ${AI_ASSISTANT_TOOL_TIMEOUT_SECONDS:5}
+      device-base-url: ${AI_ASSISTANT_DEVICE_BASE_URL:http://device-service:8083}
+      monitor-base-url: ${AI_ASSISTANT_MONITOR_BASE_URL:http://monitor-service:8096}
+      work-order-base-url: ${AI_ASSISTANT_WORK_ORDER_BASE_URL:http://worker-order-service:8089}
+      water-base-url: ${AI_ASSISTANT_WATER_BASE_URL:http://water-service:8100}
+      report-base-url: ${AI_ASSISTANT_REPORT_BASE_URL:http://report-service:8097}
+      internal-service-token: ${INTERNAL_SERVICE_TOKEN:}
 
 management:
   health:

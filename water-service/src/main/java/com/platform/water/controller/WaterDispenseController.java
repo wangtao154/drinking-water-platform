@@ -2,6 +2,8 @@ package com.platform.water.controller;
 
 import com.platform.common.result.PageResult;
 import com.platform.common.result.R;
+import com.platform.common.exception.BusinessException;
+import com.platform.common.result.ResultCode;
 import com.platform.water.dto.Q74PreviewDTO;
 import com.platform.water.dto.WaterDispenseCreateDTO;
 import com.platform.water.dto.WaterDispenseOrderPageQueryDTO;
@@ -14,8 +16,10 @@ import com.platform.water.vo.WaterWechatPayVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 
 @RestController
@@ -34,6 +39,9 @@ import java.util.Map;
 public class WaterDispenseController {
 
     private final WaterDispenseService waterDispenseService;
+
+    @Value("${internal.service-token:}")
+    private String internalServiceToken;
 
     @PostMapping("/scan-orders")
     public R<WaterDispenseOrderVO> createOrder(@Valid @RequestBody WaterDispenseCreateDTO dto) {
@@ -69,6 +77,23 @@ public class WaterDispenseController {
 
     @GetMapping("/scan-orders/statistics")
     public R<WaterDispenseOrderStatsVO> orderStats(WaterDispenseOrderPageQueryDTO query) {
+        return R.ok(waterDispenseService.getOrderStats(query));
+    }
+
+    /**
+     * Internal aggregate for the assistant. It returns only aggregate values,
+     * never order rows or customer data. The AI service selects the supported
+     * time range in code and proves its identity with the shared service token.
+     */
+    @GetMapping("/internal/scan-orders/statistics")
+    public R<WaterDispenseOrderStatsVO> internalOrderStats(
+            @RequestHeader(value = "X-Internal-Token", required = false) String internalToken,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime paidStartTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime paidEndTime) {
+        verifyInternalToken(internalToken);
+        WaterDispenseOrderPageQueryDTO query = new WaterDispenseOrderPageQueryDTO();
+        query.setPaidStartTime(paidStartTime);
+        query.setPaidEndTime(paidEndTime);
         return R.ok(waterDispenseService.getOrderStats(query));
     }
 
@@ -108,6 +133,13 @@ public class WaterDispenseController {
             log.warn("[WechatPay] refund notify handling failed, serial={}, message={}", serial, e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("code", "FAIL", "message", "fail"));
+        }
+    }
+
+    private void verifyInternalToken(String internalToken) {
+        if (internalServiceToken == null || internalServiceToken.isBlank()
+                || internalToken == null || !internalServiceToken.equals(internalToken)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "内部接口令牌无效");
         }
     }
 }

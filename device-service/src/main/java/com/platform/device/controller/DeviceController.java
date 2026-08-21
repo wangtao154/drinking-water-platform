@@ -1,8 +1,10 @@
 package com.platform.device.controller;
 
 import com.platform.common.auth.UserContext;
+import com.platform.common.exception.BusinessException;
 import com.platform.common.result.PageResult;
 import com.platform.common.result.R;
+import com.platform.common.result.ResultCode;
 import com.platform.device.dto.DeviceBindDTO;
 import com.platform.device.dto.DeviceQueryDTO;
 import com.platform.device.dto.DeviceRegisterDTO;
@@ -11,9 +13,12 @@ import com.platform.device.service.DeviceService;
 import com.platform.device.vo.DeviceVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/devices")
@@ -21,6 +26,9 @@ import java.util.List;
 public class DeviceController {
 
     private final DeviceService deviceService;
+
+    @Value("${internal.service-token:}")
+    private String internalServiceToken;
 
     @PostMapping
     public R<DeviceVO> register(@Valid @RequestBody DeviceRegisterDTO dto) {
@@ -59,6 +67,34 @@ public class DeviceController {
         return R.ok(deviceService.page(query));
     }
 
+    /**
+     * Internal assistant lookup. Only a compact device snapshot is exposed;
+     * customer, address, and other page fields are intentionally omitted.
+     */
+    @GetMapping("/internal/assistant/device")
+    public R<Map<String, Object>> internalAssistantDevice(
+            @RequestHeader(value = "X-Internal-Token", required = false) String internalToken,
+            @RequestParam String identifier) {
+        verifyInternalToken(internalToken);
+        DeviceQueryDTO query = new DeviceQueryDTO();
+        query.setKeyword(identifier == null ? null : identifier.trim());
+        query.setPageSize(1);
+        List<DeviceVO> records = deviceService.page(query).getRecords();
+        if (records == null || records.isEmpty()) {
+            return R.ok(Map.of("found", false));
+        }
+        DeviceVO device = records.get(0);
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("found", true);
+        snapshot.put("deviceId", device.getDeviceId());
+        snapshot.put("sn", device.getSn());
+        snapshot.put("modelName", device.getModelName());
+        snapshot.put("onlineStatus", device.getOnlineStatus());
+        snapshot.put("lifecycleStatus", device.getLifecycleStatus());
+        snapshot.put("activatedAt", device.getActivatedAt());
+        return R.ok(snapshot);
+    }
+
     @PostMapping("/bind")
     public R<DeviceVO> bind(@Valid @RequestBody DeviceBindDTO dto) {
         Long customerId = UserContext.getUserId();
@@ -93,5 +129,12 @@ public class DeviceController {
     public R<List<DeviceVO>> myDevices() {
         Long customerId = UserContext.getUserId();
         return R.ok(deviceService.myDevices(customerId));
+    }
+
+    private void verifyInternalToken(String internalToken) {
+        if (internalServiceToken == null || internalServiceToken.isBlank()
+                || internalToken == null || !internalServiceToken.equals(internalToken)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "内部接口令牌无效");
+        }
     }
 }

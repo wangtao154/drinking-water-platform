@@ -11,12 +11,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -35,6 +41,11 @@ public class InfluxDbService {
     private static final Set<String> ALLOWED_HISTORY_INTERVALS = Set.of(
             "1s", "10s", "30s", "1m", "5m", "10m", "30m", "1h", "6h", "12h", "1d"
     );
+
+    private static final List<String> PRODUCTION_SUMMARY_FIELDS = List.of(
+            "P1", "P2", "P12", "P15", "P18", "P19", "P23"
+    );
+    private static final Duration MAX_CONTINUOUS_PRODUCTION_GAP = Duration.ofMinutes(2);
 
     public void writeTelemetry(String sn, Map<String, Object> points, Map<String, String> tags) {
         try {
@@ -300,6 +311,188 @@ public class InfluxDbService {
             log.error("Failed to query history telemetry for {}={}: {}",
                     tagName, tagValue, e.getMessage(), e);
             return null;
+        }
+    }
+
+    /**
+     * Returns a compact production-only summary for the controlled assistant.
+     *
+     * <p>The calculation is always bound to the immutable {@code device_id} tag.
+     * It only uses samples whose P23 production state is enabled, so standby
+     * pressure and TDS values do not pollute the production assessment.</p>
+     */
+    public Map<String, Object> queryProductionSummary(
+            String deviceId, LocalDateTime startTime, LocalDateTime endTime) {
+        try {
+            Instant start = startTime.atZone(ZoneId.systemDefault()).toInstant();
+            Instant end = endTime.atZone(ZoneId.systemDefault()).toInstant();
+            String aggregationInterval = selectProductionAggregationInterval(start, end);
+            String fieldList = PRODUCTION_SUMMARY_FIELDS.stream()
+                    .map(field -> "\"" + field + "\"")
+                    .collect(Collectors.joining(", "));
+
+            String flux = String.format(
+                    "from(bucket: \"%s\")\n" +
+                            "  |> range(start: %s, stop: %s)\n" +
+                            "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.device_id == \"%s\")\n" +
+                            "  |> filter(fn: (r) => contains(value: r._field, set: [%s]))\n" +
+                            "  |> filter(fn: (r) => exists r._value)\n" +
+                            "  |> aggregateWindow(every: %s, fn: mean, createEmpty: false)\n" +
+                            "  |> keep(columns: [\"_time\", \"_field\", \"_value\"])\n" +
+                            "  |> sort(columns: [\"_time\"])",
+                    escapeFluxString(influxBucket), start, end, escapeFluxString(deviceId), fieldList,
+                    aggregationInterval);
+
+            List<FluxTable> tables = influxDBClient.getQueryApi().query(flux, influxOrg);
+            Map<Instant, Map<String, Double>> valuesByTime = new TreeMap<>();
+            if (tables != null) {
+                for (FluxTable table : tables) {
+                    for (FluxRecord record : table.getRecords()) {
+                        if (record.getTime() == null || record.getField() == null
+                                || !(record.getValue() instanceof Number value)) {
+                            continue;
+                        }
+                        valuesByTime.computeIfAbsent(record.getTime(), ignored -> new HashMap<>())
+                                .put(record.getField(), value.doubleValue());
+                    }
+                }
+            }
+
+            List<ProductionSample> samples = valuesByTime.entrySet().stream()
+                    .map(entry -> new ProductionSample(entry.getKey(), entry.getValue()))
+                    .sorted(Comparator.comparing(ProductionSample::time))
+                    .toList();
+
+            Map<String, Object> summary = summarizeProductionSamples(samples);
+            summary.put("startTime", startTime.toString());
+            summary.put("endTime", endTime.toString());
+            summary.put("aggregationInterval", aggregationInterval);
+            summary.put("telemetrySamples", samples.size());
+            return summary;
+        } catch (Exception e) {
+            log.error("Failed to query production summary for deviceId={}: {}", deviceId, e.getMessage(), e);
+            return null;
+        }
+    }
+
+    private Map<String, Object> summarizeProductionSamples(List<ProductionSample> samples) {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        if (samples.isEmpty()) {
+            summary.put("dataStatus", "NO_DATA");
+            summary.put("currentProducing", false);
+            summary.put("productionSessions", 0);
+            summary.put("productionSamples", 0);
+            summary.put("productionDurationMinutes", 0D);
+            summary.put("pureWaterLiters", 0D);
+            summary.put("wasteWaterLiters", 0D);
+            summary.put("wasteWaterRatio", null);
+            return summary;
+        }
+
+        boolean previousProducing = false;
+        Instant previousTime = null;
+        Double previousPureTotal = null;
+        Double previousWasteTotal = null;
+        int productionSessions = 0;
+        int productionSamples = 0;
+        long productionDurationSeconds = 0;
+        double pureWaterLiters = 0D;
+        double wasteWaterLiters = 0D;
+        MetricAccumulator rawTds = new MetricAccumulator();
+        MetricAccumulator pureTds = new MetricAccumulator();
+        MetricAccumulator membraneFrontPressure = new MetricAccumulator();
+        MetricAccumulator membraneRearPressure = new MetricAccumulator();
+
+        for (ProductionSample sample : samples) {
+            boolean producing = isProducing(sample.values().get("P23"));
+            Duration gap = previousTime == null ? null : Duration.between(previousTime, sample.time());
+            boolean continuous = gap != null && !gap.isNegative() && !gap.isZero()
+                    && gap.compareTo(MAX_CONTINUOUS_PRODUCTION_GAP) <= 0;
+
+            if (producing && (!previousProducing || !continuous)) {
+                productionSessions++;
+            }
+            if (producing) {
+                productionSamples++;
+                if (previousProducing && continuous) {
+                    productionDurationSeconds += gap.getSeconds();
+                    pureWaterLiters += positiveIncrement(previousPureTotal, sample.values().get("P12"));
+                    wasteWaterLiters += positiveIncrement(previousWasteTotal, sample.values().get("P15"));
+                }
+                rawTds.add(sample.values().get("P1"));
+                pureTds.add(sample.values().get("P2"));
+                membraneFrontPressure.add(sample.values().get("P18"));
+                membraneRearPressure.add(sample.values().get("P19"));
+            }
+
+            previousPureTotal = sample.values().get("P12") != null
+                    ? sample.values().get("P12") : previousPureTotal;
+            previousWasteTotal = sample.values().get("P15") != null
+                    ? sample.values().get("P15") : previousWasteTotal;
+            previousProducing = producing;
+            previousTime = sample.time();
+        }
+
+        ProductionSample latest = samples.get(samples.size() - 1);
+        summary.put("dataStatus", productionSamples == 0 ? "NO_PRODUCTION" : "OK");
+        summary.put("currentProducing", isProducing(latest.values().get("P23")));
+        summary.put("lastTelemetryAt", latest.time().toString());
+        summary.put("productionSessions", productionSessions);
+        summary.put("productionSamples", productionSamples);
+        summary.put("productionDurationMinutes", round(productionDurationSeconds / 60D));
+        summary.put("pureWaterLiters", round(pureWaterLiters));
+        summary.put("wasteWaterLiters", round(wasteWaterLiters));
+        summary.put("wasteWaterRatio", pureWaterLiters > 0D ? round(wasteWaterLiters / pureWaterLiters) : null);
+        summary.put("averageRawTds", rawTds.average());
+        summary.put("averagePureTds", pureTds.average());
+        summary.put("averageMembraneFrontPressure", membraneFrontPressure.average());
+        summary.put("averageMembraneRearPressure", membraneRearPressure.average());
+        return summary;
+    }
+
+    private String selectProductionAggregationInterval(Instant start, Instant end) {
+        Duration range = Duration.between(start, end);
+        if (range.compareTo(Duration.ofDays(1)) <= 0) {
+            return "10s";
+        }
+        if (range.compareTo(Duration.ofDays(7)) <= 0) {
+            return "30s";
+        }
+        return "1m";
+    }
+
+    private boolean isProducing(Double value) {
+        return value != null && value > 0.5D;
+    }
+
+    private double positiveIncrement(Double previous, Double current) {
+        if (previous == null || current == null) {
+            return 0D;
+        }
+        double increment = current - previous;
+        return increment > 0D ? increment : 0D;
+    }
+
+    private double round(double value) {
+        return Math.round(value * 1000D) / 1000D;
+    }
+
+    private record ProductionSample(Instant time, Map<String, Double> values) {
+    }
+
+    private static final class MetricAccumulator {
+        private double sum;
+        private int count;
+
+        void add(Double value) {
+            if (value != null) {
+                sum += value;
+                count++;
+            }
+        }
+
+        Double average() {
+            return count == 0 ? null : Math.round(sum / count * 1000D) / 1000D;
         }
     }
 

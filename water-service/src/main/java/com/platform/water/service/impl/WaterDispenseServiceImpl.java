@@ -354,7 +354,11 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
                         "SUM(CASE WHEN pay_status = 'PENDING' THEN 1 ELSE 0 END) AS pending",
                         "SUM(CASE WHEN dispense_status = 'DISPATCHED' THEN 1 ELSE 0 END) AS dispatched",
                         "SUM(CASE WHEN command_status IN ('SENT', 'ACK') THEN 1 ELSE 0 END) AS sent",
-                        "COALESCE(SUM(CASE WHEN pay_status = 'SUCCESS' THEN pay_amount ELSE 0 END), 0) AS totalAmount");
+                        "SUM(CASE WHEN refund_status = 'SUCCESS' THEN 1 ELSE 0 END) AS refunded",
+                        "SUM(CASE WHEN refund_status = 'PROCESSING' THEN 1 ELSE 0 END) AS refundProcessing",
+                        "COALESCE(SUM(CASE WHEN pay_status = 'SUCCESS' THEN pay_amount ELSE 0 END), 0) AS totalAmount",
+                        "COALESCE(SUM(CASE WHEN refund_status = 'SUCCESS' THEN refund_amount ELSE 0 END), 0) AS refundAmount",
+                        "COALESCE(SUM(CASE WHEN pay_status = 'SUCCESS' THEN target_ml ELSE 0 END), 0) AS totalDispenseMl");
         wrapper.eq(StringUtils.hasText(query.getOrderNo()), "order_no", query.getOrderNo())
                 .eq(StringUtils.hasText(query.getSn()), "sn", query.getSn())
                 .eq(StringUtils.hasText(query.getPayStatus()), "pay_status", query.getPayStatus())
@@ -378,7 +382,11 @@ public class WaterDispenseServiceImpl implements WaterDispenseService {
         vo.setPending(toLong(row.get("pending")));
         vo.setDispatched(toLong(row.get("dispatched")));
         vo.setSent(toLong(row.get("sent")));
+        vo.setRefunded(toLong(row.get("refunded")));
+        vo.setRefundProcessing(toLong(row.get("refundProcessing")));
         vo.setTotalAmount(toLong(row.get("totalAmount")));
+        vo.setRefundAmount(toLong(row.get("refundAmount")));
+        vo.setTotalDispenseMl(toLong(row.get("totalDispenseMl")));
         return vo;
     }
 

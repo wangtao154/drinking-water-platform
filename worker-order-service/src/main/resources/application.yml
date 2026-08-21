@@ -83,6 +83,9 @@ jwt:
   access-expire: 7200
   refresh-expire: 604800
 
+internal:
+  service-token: ${INTERNAL_SERVICE_TOKEN:}
+
 # MinIO
 minio:
   endpoint: ${MINIO_ENDPOINT:http://dw-minio:9000}

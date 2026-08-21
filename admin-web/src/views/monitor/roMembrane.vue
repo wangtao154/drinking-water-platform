@@ -158,7 +158,16 @@
               <el-descriptions-item label="脱盐率">{{ formatNumber(prediction.desalinationRate, 2) }}%</el-descriptions-item>
               <el-descriptions-item label="废水比">{{ formatNumber(prediction.wastewaterRatio, 2) }}</el-descriptions-item>
               <el-descriptions-item label="制水状态">
-                {{ prediction.waterProducing ? '正在制水' : '未制水/待机' }}
+                {{ prediction.waterProducing ? '检测到制水记录' : '未检测到制水记录' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="有效制水会话">
+                {{ prediction.stableProductionSessionCount ?? 0 }} / {{ prediction.productionSessionCount ?? 0 }} 次
+              </el-descriptions-item>
+              <el-descriptions-item label="稳定样本">
+                {{ prediction.productionSampleCount ?? 0 }} 个
+              </el-descriptions-item>
+              <el-descriptions-item label="制水数据置信度">
+                {{ confidenceLabel(prediction.productionDataConfidence) }}
               </el-descriptions-item>
               <el-descriptions-item label="统计范围">{{ prediction.rangeDays }} 天</el-descriptions-item>
               <el-descriptions-item label="统计间隔">{{ aggregateLabel(prediction.aggregateEvery) }}</el-descriptions-item>

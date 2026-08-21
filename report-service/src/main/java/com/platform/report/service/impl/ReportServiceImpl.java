@@ -74,44 +74,76 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public DashboardVO getDashboard() {
+        return getDashboard(null, null);
+    }
+
+    @Override
+    public DashboardVO getDashboard(LocalDateTime startTime, LocalDateTime endTime) {
         DashboardVO vo = new DashboardVO();
         vo.setTotalDevices(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM device WHERE deleted = 0"));
         vo.setOnlineDevices(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM device WHERE online_status = 1 AND deleted = 0"));
         vo.setOfflineDevices(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM device WHERE online_status = 0 AND deleted = 0"));
         vo.setTotalCustomers(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM customer WHERE deleted = 0"));
-        vo.setTotalOrders(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE deleted = 0"));
-        vo.setTotalRevenue(queryForLong("SELECT COALESCE(SUM(pay_amount), 0) FROM order_info WHERE order_status = 'PAID' AND deleted = 0"));
-        vo.setPendingOrders(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE order_status = 'PENDING' AND deleted = 0"));
+        vo.setTotalOrders(queryForLongInRange(
+                "SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE deleted = 0", "ordered_at", startTime, endTime));
+        vo.setTotalRevenue(queryForLongInRange(
+                "SELECT COALESCE(SUM(pay_amount), 0) FROM order_info WHERE order_status = 'PAID' AND deleted = 0", "paid_at", startTime, endTime));
+        vo.setPendingOrders(queryForLongInRange(
+                "SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE order_status = 'PENDING' AND deleted = 0", "ordered_at", startTime, endTime));
         vo.setTotalFilters(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM filter_instance WHERE deleted = 0"));
         vo.setTotalWorkers(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM worker WHERE deleted = 0"));
         vo.setTotalDealers(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM dealer WHERE deleted = 0"));
-        vo.setActiveAlerts(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM device_alert WHERE handled_status = 'UNHANDLED' AND deleted = 0"));
+        vo.setActiveAlerts(queryForLongInRange(
+                "SELECT COALESCE(COUNT(*), 0) FROM device_alert WHERE handled_status = 'UNHANDLED' AND deleted = 0", "triggered_at", startTime, endTime));
         log.info("[报表] 仪表盘统计完成");
         return vo;
     }
 
     @Override
     public DeviceReportVO getDeviceReport() {
+        return getDeviceReport(null, null);
+    }
+
+    @Override
+    public DeviceReportVO getDeviceReport(LocalDateTime startTime, LocalDateTime endTime) {
         DeviceReportVO vo = new DeviceReportVO();
         vo.setTotalDevices(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM device WHERE deleted = 0"));
         vo.setOnlineCount(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM device WHERE online_status = 1 AND deleted = 0"));
         vo.setOfflineCount(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM device WHERE online_status = 0 AND deleted = 0"));
         vo.setFaultCount(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM device WHERE lifecycle_status = 'FAULT' AND deleted = 0"));
-        vo.setRegisteredToday(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM device WHERE DATE(created_at) = CURDATE() AND deleted = 0"));
-        vo.setActivatedToday(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM device WHERE DATE(activated_at) = CURDATE() AND deleted = 0"));
+        if (startTime == null) {
+            vo.setRegisteredToday(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM device WHERE DATE(created_at) = CURDATE() AND deleted = 0"));
+            vo.setActivatedToday(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM device WHERE DATE(activated_at) = CURDATE() AND deleted = 0"));
+        } else {
+            vo.setRegisteredToday(queryForLongInRange(
+                    "SELECT COALESCE(COUNT(*), 0) FROM device WHERE deleted = 0", "created_at", startTime, endTime));
+            vo.setActivatedToday(queryForLongInRange(
+                    "SELECT COALESCE(COUNT(*), 0) FROM device WHERE deleted = 0", "activated_at", startTime, endTime));
+        }
         log.info("[报表] 设备统计完成");
         return vo;
     }
 
     @Override
     public OrderReportVO getOrderReport() {
+        return getOrderReport(null, null);
+    }
+
+    @Override
+    public OrderReportVO getOrderReport(LocalDateTime startTime, LocalDateTime endTime) {
         OrderReportVO vo = new OrderReportVO();
-        vo.setTotalOrders(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE deleted = 0"));
-        vo.setPendingOrders(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE order_status = 'PENDING' AND deleted = 0"));
-        vo.setPaidOrders(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE order_status = 'PAID' AND deleted = 0"));
-        vo.setCancelledOrders(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE order_status = 'CANCELLED' AND deleted = 0"));
-        vo.setRefundedOrders(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE order_status = 'REFUNDED' AND deleted = 0"));
-        vo.setTotalRevenue(queryForLong("SELECT COALESCE(SUM(pay_amount), 0) FROM order_info WHERE order_status = 'PAID' AND deleted = 0"));
+        vo.setTotalOrders(queryForLongInRange(
+                "SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE deleted = 0", "ordered_at", startTime, endTime));
+        vo.setPendingOrders(queryForLongInRange(
+                "SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE order_status = 'PENDING' AND deleted = 0", "ordered_at", startTime, endTime));
+        vo.setPaidOrders(queryForLongInRange(
+                "SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE order_status = 'PAID' AND deleted = 0", "ordered_at", startTime, endTime));
+        vo.setCancelledOrders(queryForLongInRange(
+                "SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE order_status = 'CANCELLED' AND deleted = 0", "ordered_at", startTime, endTime));
+        vo.setRefundedOrders(queryForLongInRange(
+                "SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE order_status = 'REFUNDED' AND deleted = 0", "ordered_at", startTime, endTime));
+        vo.setTotalRevenue(queryForLongInRange(
+                "SELECT COALESCE(SUM(pay_amount), 0) FROM order_info WHERE order_status = 'PAID' AND deleted = 0", "paid_at", startTime, endTime));
         vo.setTodayOrders(queryForLong("SELECT COALESCE(COUNT(*), 0) FROM order_info WHERE DATE(created_at) = CURDATE() AND deleted = 0"));
         vo.setTodayRevenue(queryForLong("SELECT COALESCE(SUM(pay_amount), 0) FROM order_info WHERE order_status = 'PAID' AND DATE(created_at) = CURDATE() AND deleted = 0"));
         log.info("[报表] 订单统计完成");
@@ -151,6 +183,18 @@ public class ReportServiceImpl implements ReportService {
      */
     private Long queryForLong(String sql) {
         Long result = jdbcTemplate.queryForObject(sql, Long.class);
+        return result != null ? result : 0L;
+    }
+
+    /** Timestamp column names are compile-time constants supplied by this service only. */
+    private Long queryForLongInRange(String sql, String timestampColumn,
+                                     LocalDateTime startTime, LocalDateTime endTime) {
+        if (startTime == null || endTime == null) {
+            return queryForLong(sql);
+        }
+        Long result = jdbcTemplate.queryForObject(
+                sql + " AND " + timestampColumn + " >= ? AND " + timestampColumn + " < ?",
+                Long.class, startTime, endTime);
         return result != null ? result : 0L;
     }
 

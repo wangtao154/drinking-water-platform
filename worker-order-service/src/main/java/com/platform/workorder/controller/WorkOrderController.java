@@ -1,16 +1,21 @@
 package com.platform.workorder.controller;
 
 import com.platform.common.auth.UserContext;
+import com.platform.common.exception.BusinessException;
 import com.platform.common.result.PageResult;
 import com.platform.common.result.R;
+import com.platform.common.result.ResultCode;
 import com.platform.workorder.dto.*;
 import com.platform.workorder.service.WorkOrderService;
 import com.platform.workorder.vo.WorkOrderStatsVO;
 import com.platform.workorder.vo.WorkOrderVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -22,6 +27,9 @@ import java.util.List;
 public class WorkOrderController {
 
     private final WorkOrderService workOrderService;
+
+    @Value("${internal.service-token:}")
+    private String internalServiceToken;
 
     /**
      * 创建工单
@@ -112,6 +120,20 @@ public class WorkOrderController {
         return R.ok(workOrderService.getStatistics(query));
     }
 
+    /** Read-only aggregate used by the AI assistant service. */
+    @GetMapping("/internal/assistant/statistics")
+    public R<WorkOrderStatsVO> internalAssistantStatistics(
+            @RequestHeader(value = "X-Internal-Token", required = false) String internalToken,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime startTime,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss") LocalDateTime endTime) {
+        verifyInternalToken(internalToken);
+        validateTimeRange(startTime, endTime);
+        WorkOrderPageQueryDTO query = new WorkOrderPageQueryDTO();
+        query.setCreatedStartTime(startTime);
+        query.setCreatedEndTime(endTime);
+        return R.ok(workOrderService.getStatistics(query));
+    }
+
     /**
      * 删除工单
      */
@@ -158,5 +180,18 @@ public class WorkOrderController {
         Long customerId = UserContext.getUserId();
         workOrderService.review(id, dto, customerId);
         return R.ok();
+    }
+
+    private void verifyInternalToken(String internalToken) {
+        if (internalServiceToken == null || internalServiceToken.isBlank()
+                || internalToken == null || !internalServiceToken.equals(internalToken)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "内部接口令牌无效");
+        }
+    }
+
+    private void validateTimeRange(LocalDateTime startTime, LocalDateTime endTime) {
+        if ((startTime == null) != (endTime == null) || (startTime != null && !endTime.isAfter(startTime))) {
+            throw new BusinessException(ResultCode.PARAM_INVALID, "时间范围无效");
+        }
     }
 }
