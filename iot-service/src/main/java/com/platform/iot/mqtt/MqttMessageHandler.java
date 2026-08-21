@@ -104,7 +104,7 @@ public class MqttMessageHandler {
             influxDbService.writeTelemetry(sn, points, tags);
 
             // Telemetry only proves that the device is reporting data.
-            // Controllable online status is determined by Q66 heartbeat ACK.
+            // Controllable online status is determined by Q102 heartbeat ACK.
             deviceLookupMapper.touchTelemetryReportedAt(device.getId());
 
             log.info("Telemetry processed for SN {}: {} data points", sn, points.size());
@@ -177,10 +177,10 @@ public class MqttMessageHandler {
         }
 
         if (online) {
-            // LWT online only means the MQTT session is connected; Q66 heartbeat ACK marks controllable online.
+            // LWT online only means the MQTT session is connected; Q102 heartbeat ACK marks controllable online.
             deviceLookupMapper.touchTelemetryReportedAt(device.getId());
             influxDbService.writeOnlineStatus(device.getDeviceId(), sn, true);
-            log.info("LWT online recorded for SN: {}, waiting for Q66 heartbeat ACK to mark controllable online", sn);
+            log.info("LWT online recorded for SN: {}, waiting for Q102 heartbeat ACK to mark controllable online", sn);
             return;
         }
 

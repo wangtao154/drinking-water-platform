@@ -45,6 +45,8 @@ public class InfluxDbService {
     private static final List<String> PRODUCTION_SUMMARY_FIELDS = List.of(
             "P1", "P2", "P12", "P15", "P18", "P19", "P23"
     );
+    /** 1 分钟下采样表：由 InfluxDB task downsample-telemetry-1m 维护，制水统计优先读它 */
+    private static final String DOWNSAMPLED_MEASUREMENT = "device_telemetry_1m";
     private static final Duration MAX_CONTINUOUS_PRODUCTION_GAP = Duration.ofMinutes(2);
 
     public void writeTelemetry(String sn, Map<String, Object> points, Map<String, String> tags) {
@@ -320,6 +322,11 @@ public class InfluxDbService {
      * <p>The calculation is always bound to the immutable {@code device_id} tag.
      * It only uses samples whose P23 production state is enabled, so standby
      * pressure and TDS values do not pollute the production assessment.</p>
+     *
+     * <p>Reads the 1-minute downsampled measurement ({@code device_telemetry_1m})
+     * maintained by the InfluxDB task {@code downsample-telemetry-1m} instead of
+     * the raw 10-second measurement. This keeps the query at sub-second latency
+     * instead of scanning millions of raw points.</p>
      */
     public Map<String, Object> queryProductionSummary(
             String deviceId, LocalDateTime startTime, LocalDateTime endTime) {
@@ -327,21 +334,45 @@ public class InfluxDbService {
             Instant start = startTime.atZone(ZoneId.systemDefault()).toInstant();
             Instant end = endTime.atZone(ZoneId.systemDefault()).toInstant();
             String aggregationInterval = selectProductionAggregationInterval(start, end);
-            String fieldList = PRODUCTION_SUMMARY_FIELDS.stream()
+
+            String meanFields = PRODUCTION_SUMMARY_FIELDS.stream()
+                    .filter(f -> List.of("P1", "P2", "P18", "P19").contains(f))
+                    .map(field -> "\"" + field + "\"")
+                    .collect(Collectors.joining(", "));
+            String lastFields = PRODUCTION_SUMMARY_FIELDS.stream()
+                    .filter(f -> List.of("P12", "P15").contains(f))
+                    .map(field -> "\"" + field + "\"")
+                    .collect(Collectors.joining(", "));
+            String maxFields = PRODUCTION_SUMMARY_FIELDS.stream()
+                    .filter(f -> List.of("P23").contains(f))
                     .map(field -> "\"" + field + "\"")
                     .collect(Collectors.joining(", "));
 
             String flux = String.format(
-                    "from(bucket: \"%s\")\n" +
+                    "meanData = from(bucket: \"%s\")\n" +
                             "  |> range(start: %s, stop: %s)\n" +
-                            "  |> filter(fn: (r) => r._measurement == \"device_telemetry\" and r.device_id == \"%s\")\n" +
+                            "  |> filter(fn: (r) => r._measurement == \"%s\" and r.device_id == \"%s\")\n" +
                             "  |> filter(fn: (r) => contains(value: r._field, set: [%s]))\n" +
-                            "  |> filter(fn: (r) => exists r._value)\n" +
                             "  |> aggregateWindow(every: %s, fn: mean, createEmpty: false)\n" +
+                            "lastData = from(bucket: \"%s\")\n" +
+                            "  |> range(start: %s, stop: %s)\n" +
+                            "  |> filter(fn: (r) => r._measurement == \"%s\" and r.device_id == \"%s\")\n" +
+                            "  |> filter(fn: (r) => contains(value: r._field, set: [%s]))\n" +
+                            "  |> aggregateWindow(every: %s, fn: last, createEmpty: false)\n" +
+                            "maxData = from(bucket: \"%s\")\n" +
+                            "  |> range(start: %s, stop: %s)\n" +
+                            "  |> filter(fn: (r) => r._measurement == \"%s\" and r.device_id == \"%s\")\n" +
+                            "  |> filter(fn: (r) => contains(value: r._field, set: [%s]))\n" +
+                            "  |> aggregateWindow(every: %s, fn: max, createEmpty: false)\n" +
+                            "union(tables: [meanData, lastData, maxData])\n" +
                             "  |> keep(columns: [\"_time\", \"_field\", \"_value\"])\n" +
                             "  |> sort(columns: [\"_time\"])",
-                    escapeFluxString(influxBucket), start, end, escapeFluxString(deviceId), fieldList,
-                    aggregationInterval);
+                    escapeFluxString(influxBucket), start, end, escapeFluxString(DOWNSAMPLED_MEASUREMENT),
+                    escapeFluxString(deviceId), meanFields, aggregationInterval,
+                    escapeFluxString(influxBucket), start, end, escapeFluxString(DOWNSAMPLED_MEASUREMENT),
+                    escapeFluxString(deviceId), lastFields, aggregationInterval,
+                    escapeFluxString(influxBucket), start, end, escapeFluxString(DOWNSAMPLED_MEASUREMENT),
+                    escapeFluxString(deviceId), maxFields, aggregationInterval);
 
             List<FluxTable> tables = influxDBClient.getQueryApi().query(flux, influxOrg);
             Map<Instant, Map<String, Double>> valuesByTime = new TreeMap<>();
@@ -452,13 +483,10 @@ public class InfluxDbService {
 
     private String selectProductionAggregationInterval(Instant start, Instant end) {
         Duration range = Duration.between(start, end);
-        if (range.compareTo(Duration.ofDays(1)) <= 0) {
-            return "10s";
-        }
         if (range.compareTo(Duration.ofDays(7)) <= 0) {
-            return "30s";
+            return "1m";
         }
-        return "1m";
+        return "5m";
     }
 
     private boolean isProducing(Double value) {

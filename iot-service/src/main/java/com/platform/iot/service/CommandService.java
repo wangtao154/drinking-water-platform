@@ -24,6 +24,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CommandService {
 
+    private static final String HEARTBEAT_POINT_ID = "Q102";
+
     private final MqttConfig mqttConfig;
     private final CommandLogMapper commandLogMapper;
     private final DeviceLookupMapper deviceLookupMapper;
@@ -213,10 +215,14 @@ public class CommandService {
     }
 
     /**
-     * 心跳检测：发送 Q66=1 并等待 ACK，返回设备是否在线
+     * 心跳检测：发送 Q102=1 并等待 ACK，返回设备是否在线。
+     *
+     * <p>在线判定只要求收到与本次 messageID 匹配的 ACK：设备能回复 ACK 即说明
+     * MQTT 链路和控制板活跃，即使 ACK 中 errCode != 0（命令执行失败）也判定在线。
+     * 命令执行失败只反映 Q102 点本身的状态，不代表设备掉线。</p>
      *
      * @param sn 设备 SN
-     * @return true=收到 ACK（在线），false=超时/失败（离线）
+     * @return true=收到匹配 messageID 的 ACK（在线，不论 errCode 是否成功），false=超时/无 ACK（离线）
      */
     public boolean heartbeat(String sn) {
         if (!mqttConfig.isConnected()) {
@@ -234,19 +240,19 @@ public class CommandService {
         commandLog.setMessageId(messageID);
         commandLog.setSn(sn);
         commandLog.setDeviceId(device.getDeviceId());
-        commandLog.setPointId("Q66");
+        commandLog.setPointId(HEARTBEAT_POINT_ID);
         commandLog.setValue("1");
         commandLog.setStatus("PENDING");
         commandLog.setCommandType("HEARTBEAT");
         commandLogMapper.insert(commandLog);
 
         try {
-            publishSetPayload(sn, "Q66", "1", messageID);
+            publishSetPayload(sn, HEARTBEAT_POINT_ID, "1", messageID);
             markSentIfPending(messageID);
             CommandLog ackLog = waitForAck(messageID, 10_000L);
-            boolean online = ackLog != null
-                    && ackLog.getAckReceivedAt() != null
-                    && ("ACK".equals(ackLog.getStatus()) || "EXECUTED".equals(ackLog.getStatus()));
+            // 收到匹配 messageID 的 ACK 即认为设备在线，不论 ACK 的 errCode 是否成功。
+            // 设备能回复 ACK 说明链路与控制板活跃；命令失败（status=FAILED）不影响在线判定。
+            boolean online = ackLog != null && ackLog.getAckReceivedAt() != null;
             if (!online) {
                 markTimeoutIfSent(messageID);
             }

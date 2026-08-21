@@ -30,6 +30,9 @@ public class JwtUtil {
     @Value("${jwt.refresh-expire:604800}")
     private Long refreshExpireSeconds;
 
+    @Value("${jwt.wx-refresh-expire:2592000}")
+    private Long wxRefreshExpireSeconds;
+
     private SecretKey key;
 
     @PostConstruct
@@ -74,6 +77,14 @@ public class JwtUtil {
     public String createRefreshToken(CurrentUser currentUser, String sessionId) {
         return buildToken(currentUser.getUserId(), currentUser.getUserName(), currentUser.getUserType(),
                 null, sessionId, refreshExpireSeconds, "REFRESH");
+    }
+
+    /**
+     * 签发 Refresh Token（指定有效期，供微信小程序登录使用 30 天）
+     */
+    public String createRefreshToken(CurrentUser currentUser, String sessionId, long expireSeconds) {
+        return buildToken(currentUser.getUserId(), currentUser.getUserName(), currentUser.getUserType(),
+                null, sessionId, expireSeconds, "REFRESH");
     }
 
     /**
@@ -231,5 +242,10 @@ public class JwtUtil {
     /** Refresh Token 过期时间（秒），便捷别名 */
     public Long getRefreshTokenExpire() {
         return refreshExpireSeconds;
+    }
+
+    /** 微信小程序登录 Refresh Token 过期时间（秒），默认 30 天 */
+    public Long getWxRefreshExpireSeconds() {
+        return wxRefreshExpireSeconds;
     }
 }

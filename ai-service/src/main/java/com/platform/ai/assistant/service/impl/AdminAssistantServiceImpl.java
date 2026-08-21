@@ -8,6 +8,7 @@ import com.platform.ai.assistant.knowledge.AdminKnowledgeBase;
 import com.platform.ai.assistant.knowledge.AdminKnowledgeDocument;
 import com.platform.ai.assistant.service.AdminAssistantService;
 import com.platform.ai.assistant.tool.AdminAssistantReadToolService;
+import com.platform.ai.assistant.tool.AssistantToolSchemas;
 import com.platform.ai.assistant.tool.AssistantToolResult;
 import com.platform.ai.client.QwenChatClient;
 import com.platform.ai.config.AdminAssistantProperties;
@@ -23,12 +24,18 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
  * Controlled assistant orchestrator: a permission-filtered knowledge base plus
  * fixed read-only data tools. It has no write capability.
+ *
+ * <p>Since 2026-08-21 tool selection and parameter extraction are performed by
+ * the model through function calling: the model returns whitelisted tool names
+ * with structured arguments, the code validates their shape, then executes the
+ * fixed internal endpoints. The model never sees URLs or credentials.</p>
  */
 @Slf4j
 @Service
@@ -36,6 +43,9 @@ import java.util.stream.Collectors;
 public class AdminAssistantServiceImpl implements AdminAssistantService {
 
     private static final DateTimeFormatter GENERATED_AT_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter ROUTER_TIME_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss EEEE", Locale.CHINA);
+    private static final int MAX_TOOL_INVOCATIONS = 3;
     private static final String SYSTEM_PROMPT = """
             你是直饮水平台管理后台的受控只读 AI 助手。请始终使用中文回答。
             对平台功能、操作步骤和业务数据，你只能依据本次提供的受控知识库内容，以及标记为“受控实时数据”的汇总事实回答。
@@ -68,7 +78,8 @@ public class AdminAssistantServiceImpl implements AdminAssistantService {
         }
         rateLimiter.check(user.getUserId());
 
-        List<AssistantToolResult> toolResults = readToolService.collect(question, user);
+        List<AssistantToolSchemas.ToolInvocation> invocations = selectToolInvocations(question);
+        List<AssistantToolResult> toolResults = readToolService.collect(invocations, user);
         List<AdminAssistantDataSourceVO> dataSources = toolResults.stream().map(AssistantToolResult::source).toList();
         List<AdminKnowledgeDocument> documents = knowledgeBase.search(question, user);
         List<AdminAssistantCitationVO> citations = documents.stream().map(this::toCitation).toList();
@@ -92,6 +103,35 @@ public class AdminAssistantServiceImpl implements AdminAssistantService {
         log.info("[Assistant] Answer generated, userId={}, documents={}, tools={}, model={}",
                 user.getUserId(), documentIds(documents), toolNames(toolResults), qwenChatClient.getModel());
         return response(answer, false, "AI 辅助回答，仅供参考；仅使用本次返回的受控只读数据", citations, dataSources);
+    }
+
+    /**
+     * First LLM round: the model picks whitelisted tools and extracts structured
+     * parameters (device id, ISO time range, detail flag). Every returned call
+     * is shape-validated before any internal request happens.
+     */
+    private List<AssistantToolSchemas.ToolInvocation> selectToolInvocations(String question) {
+        Optional<List<QwenChatClient.ToolCall>> toolCalls = qwenChatClient.chatWithTools(
+                buildRouterSystemPrompt(), "用户问题：\n" + question, AssistantToolSchemas.TOOLS_JSON);
+        if (toolCalls.isEmpty()) {
+            return List.of();
+        }
+        return toolCalls.get().stream()
+                .map(call -> readToolService.parseInvocation(call.name(), call.argumentsJson()))
+                .flatMap(Optional::stream)
+                .limit(MAX_TOOL_INVOCATIONS)
+                .toList();
+    }
+
+    private String buildRouterSystemPrompt() {
+        return """
+                你是直饮水平台管理后台的数据查询路由器。当前时间：%s。
+                根据用户问题调用需要的查询工具并提取参数：
+                1. device_id：用户提到的设备ID（数字如 0002）或控制板SN（j 开头如 j044331）；未提到具体设备则不传。
+                2. start_time / end_time：把“近N天、今天、昨天、本周、上月”等换算成具体时间，格式 yyyy-MM-ddTHH:mm:ss；用户未提及时间范围则不传这两个参数。
+                3. detail：用户要求“详细/全部/明细/各项指标”，或询问次要分项（如退款、派单、耗时、TDS、压力、废水）时为 true。
+                最多调用 3 个工具。问题不涉及业务数据查询时不要调用任何工具。
+                """.formatted(LocalDateTime.now().format(ROUTER_TIME_FORMAT));
     }
 
     private AdminAssistantChatResponse response(String answer, boolean fallback, String notice,

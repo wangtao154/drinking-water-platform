@@ -76,6 +76,8 @@ jwt:
   secret: ${JWT_SECRET:drinking-water-platform-jwt-secret-key-please-change-in-production-2026}
   access-expire: 7200
   refresh-expire: 604800
+  # 微信小程序登录专用 refresh 有效期（秒）：30 天，后台管理员仍用 refresh-expire（7 天）
+  wx-refresh-expire: 2592000
 
 # 微信小程序配置
 # Mock 模式：不调用真实微信 API，用 code.hashCode() 生成模拟 openid

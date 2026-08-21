@@ -4,7 +4,7 @@ import java.util.*;
 
 /**
  * IoT 测点映射常量
- * P 系列（实时值，39 个）和 Q 系列（设定参数，24 个有效）
+ * P 系列（实时值）和 Q 系列（设定、校准及心跳参数）
  * 对应设计文档 3.15.2 节
  */
 public final class PointMapping {
@@ -81,7 +81,31 @@ public final class PointMapping {
             Map.entry("Q30", "IMEI"),
             Map.entry("Q31", "年"),
             Map.entry("Q32", "月"),
-            Map.entry("Q33", "日")
+            Map.entry("Q33", "日"),
+            Map.entry("Q75", "原水压力零点"),
+            Map.entry("Q76", "膜前压力零点"),
+            Map.entry("Q77", "膜后压力零点"),
+            Map.entry("Q78", "矿水压力零点"),
+            Map.entry("Q79", "原水压力斜率点"),
+            Map.entry("Q80", "膜前压力斜率点"),
+            Map.entry("Q81", "膜后压力斜率点"),
+            Map.entry("Q82", "矿水压力斜率点"),
+            Map.entry("Q83", "压力标压"),
+            Map.entry("Q84", "压力校准模式"),
+            Map.entry("Q85", "纯水K系数"),
+            Map.entry("Q86", "净水K系数"),
+            Map.entry("Q87", "矿水K系数"),
+            Map.entry("Q88", "废水K系数"),
+            Map.entry("Q89", "流量校准模式"),
+            Map.entry("Q90", "流量标准水量"),
+            Map.entry("Q91", "TDS标液浓度"),
+            Map.entry("Q92", "TDS校准模式"),
+            Map.entry("Q93", "TDS1零点"),
+            Map.entry("Q94", "TDS2零点"),
+            Map.entry("Q95", "TDS3零点"),
+            Map.entry("Q96", "TDS温度补偿系数"),
+            Map.entry("Q97", "TDS修正系数K"),
+            Map.entry("Q102", "心跳检测")
     );
 
     // ==================== 报警相关测点 ====================

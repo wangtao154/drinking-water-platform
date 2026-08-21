@@ -81,11 +81,14 @@ public class AuthServiceImpl implements AuthService {
     private static final String REDIS_SESSION_KEY = "auth:session:";
 
     private TokenPair issueTokens(CurrentUser currentUser) {
+        return issueTokens(currentUser, jwtUtil.getRefreshTokenExpire());
+    }
+
+    private TokenPair issueTokens(CurrentUser currentUser, long refreshExpire) {
         String sessionId = UUID.randomUUID().toString();
         String accessToken = jwtUtil.createAccessToken(currentUser, sessionId);
-        String refreshToken = jwtUtil.createRefreshToken(currentUser, sessionId);
+        String refreshToken = jwtUtil.createRefreshToken(currentUser, sessionId, refreshExpire);
         long accessExpire = jwtUtil.getAccessTokenExpire();
-        long refreshExpire = jwtUtil.getRefreshTokenExpire();
         String identityKey = identityKey(currentUser.getUserType(), currentUser.getUserId());
 
         stringRedisTemplate.opsForValue().set(
@@ -438,7 +441,7 @@ public class AuthServiceImpl implements AuthService {
             currentUser.setDealerId(worker.getDealerId());
             currentUser.setPermissions(new HashSet<>());
 
-            TokenPair tokens = issueTokens(currentUser);
+            TokenPair tokens = issueTokens(currentUser, jwtUtil.getWxRefreshExpireSeconds());
 
             UserInfoVO userInfo = UserInfoVO.builder()
                     .userId(worker.getId())
@@ -497,8 +500,8 @@ public class AuthServiceImpl implements AuthService {
         currentUser.setUserType(userType);
         currentUser.setPermissions(new HashSet<>());
 
-        // 8. 生成 JWT
-        TokenPair tokens = issueTokens(currentUser);
+        // 8. 生成 JWT（微信登录用 30 天 refresh 有效期）
+        TokenPair tokens = issueTokens(currentUser, jwtUtil.getWxRefreshExpireSeconds());
 
         // 9. 存入 Redis
 
