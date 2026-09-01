@@ -67,6 +67,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="profile">个人中心</el-dropdown-item>
+                <el-dropdown-item command="cancel-account" class="danger-command">注销账户</el-dropdown-item>
                 <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -104,13 +105,62 @@
       </div>
     </div>
     <AdminAiAssistant v-if="userStore.hasPermission('AI_ASSISTANT_VIEW')" />
+
+    <el-dialog v-model="profileDialogVisible" title="个人中心" width="480px" destroy-on-close>
+      <el-descriptions :column="1" border>
+        <el-descriptions-item label="当前账户">{{ userStore.nickname || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="账户类型">后台管理账户</el-descriptions-item>
+      </el-descriptions>
+      <el-alert class="profile-tip" type="info" :closable="false"
+        title="如不再使用后台账户，可在此申请注销。注销后将立即退出登录，无法恢复该账户。" />
+      <template #footer>
+        <el-button @click="profileDialogVisible = false">关闭</el-button>
+        <el-button type="danger" @click="openCancellationDialog">申请注销账户</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="cancellationDialogVisible" title="注销后台账户" width="560px" :close-on-click-modal="false" destroy-on-close>
+      <el-alert
+        title="此操作不可恢复"
+        type="error"
+        :closable="false"
+        description="注销成功后，账户将立即失效并退出登录；系统不会因本次注销自动删除设备、订单、工单等业务数据。"
+      />
+      <div class="cancellation-disclosure">
+        <p>为满足后台 AI 助手安全与投诉处理要求，以下最小化 AI 记录会在账户注销后保留至少 6 个月：</p>
+        <ul>
+          <li>AI 调用审计记录的脱敏摘要、模型及数据工具信息</li>
+          <li>用户协议与隐私政策同意记录</li>
+          <li>AI 投诉、处理和结果记录</li>
+        </ul>
+        <p>超过留存期限后由系统清理；其他业务数据依照各自业务留存规则处理。</p>
+      </div>
+      <el-form label-width="112px" @submit.prevent>
+        <el-form-item label="当前密码" required>
+          <el-input v-model="cancellationForm.password" type="password" show-password autocomplete="current-password" placeholder="请输入当前账户密码" />
+        </el-form-item>
+        <el-form-item label="确认文字" required>
+          <el-input v-model="cancellationForm.confirmText" placeholder="请输入：注销账户" />
+        </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="cancellationForm.acknowledged">
+            我已阅读上述注销影响及 AI 记录留存说明
+          </el-checkbox>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button :disabled="cancellationSubmitting" @click="cancellationDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="cancellationSubmitting" @click="submitAccountCancellation">确认注销</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
+import { cancelCurrentUserAccount } from '@/api/system'
 import { useUserStore } from '@/stores/user'
 import { useAppStore } from '@/stores/app'
 import { constantRoutes, asyncRoutes } from '@/router/routes'
@@ -120,6 +170,14 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const appStore = useAppStore()
+const profileDialogVisible = ref(false)
+const cancellationDialogVisible = ref(false)
+const cancellationSubmitting = ref(false)
+const cancellationForm = reactive({
+  password: '',
+  confirmText: '',
+  acknowledged: false
+})
 
 function canAccessRoute(route: any) {
   const permission = route.meta?.permission
@@ -258,6 +316,14 @@ watch(() => route.path, (path) => {
 
 // 下拉菜单
 async function handleCommand(command: string) {
+  if (command === 'profile') {
+    profileDialogVisible.value = true
+    return
+  }
+  if (command === 'cancel-account') {
+    openCancellationDialog()
+    return
+  }
   if (command === 'logout') {
     try {
       await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
@@ -271,6 +337,55 @@ async function handleCommand(command: string) {
     } catch {
       // 取消
     }
+  }
+}
+
+function resetCancellationForm() {
+  cancellationForm.password = ''
+  cancellationForm.confirmText = ''
+  cancellationForm.acknowledged = false
+}
+
+function openCancellationDialog() {
+  profileDialogVisible.value = false
+  resetCancellationForm()
+  cancellationDialogVisible.value = true
+}
+
+async function submitAccountCancellation() {
+  if (!cancellationForm.acknowledged) {
+    ElMessage.warning('请先阅读并确认注销影响及 AI 记录留存说明')
+    return
+  }
+  if (cancellationForm.confirmText.trim() !== '注销账户') {
+    ElMessage.warning('请在确认文字中输入“注销账户”')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      '注销后将立即退出登录，且该后台账户无法恢复。是否继续？',
+      '请再次确认',
+      { confirmButtonText: '继续注销', cancelButtonText: '返回', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+
+  cancellationSubmitting.value = true
+  try {
+    await cancelCurrentUserAccount({
+      password: cancellationForm.password,
+      confirmText: cancellationForm.confirmText.trim()
+    })
+    cancellationDialogVisible.value = false
+    await userStore.logout()
+    ElMessage.success('账户已注销，已退出登录')
+    router.replace('/login')
+  } catch {
+    // Error details are displayed by the HTTP interceptor.
+  } finally {
+    cancellationSubmitting.value = false
   }
 }
 </script>
@@ -407,6 +522,34 @@ async function handleCommand(command: string) {
   overflow-y: auto;
   background: #f0f2f5;
   padding: 0;
+}
+
+.profile-tip {
+  margin-top: 16px;
+}
+
+.cancellation-disclosure {
+  margin: 16px 0;
+  padding: 12px 14px;
+  border: 1px solid #f0d7d1;
+  border-radius: 4px;
+  background: #fff8f6;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.7;
+
+  p {
+    margin: 0;
+  }
+
+  ul {
+    margin: 8px 0;
+    padding-left: 20px;
+  }
+}
+
+:deep(.danger-command) {
+  color: #f56c6c;
 }
 
 .fade-transform-enter-active,

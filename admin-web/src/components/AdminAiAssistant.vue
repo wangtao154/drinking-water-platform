@@ -14,8 +14,13 @@
         </div>
         <div class="assistant-actions">
           <el-tooltip content="清空本次对话" placement="top">
-            <el-button text circle aria-label="清空本次对话" @click="clearConversation">
+            <el-button text circle aria-label="清空本次对话" :loading="clearingConversation" :disabled="sending" @click="clearConversation">
               <el-icon><Delete /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <el-tooltip content="投诉、举报或提交改进建议" placement="top">
+            <el-button text class="assistant-complaint-button" aria-label="投诉建议" @click="openComplaintDialog">
+              投诉建议
             </el-button>
           </el-tooltip>
           <el-tooltip content="收起 AI 助手" placement="top">
@@ -43,6 +48,7 @@
         <article v-for="message in messages" :key="message.id" class="message" :class="message.role">
           <div class="message-label">{{ message.role === 'user' ? '我' : 'AI 助手' }}</div>
           <div class="message-bubble">{{ message.content }}</div>
+          <div v-if="message.role === 'assistant'" class="ai-generated-label">本内容由 AI 生成</div>
           <template v-if="message.response">
             <div v-if="message.response.dataSources?.length" class="source-list">
               <div v-for="source in message.response.dataSources" :key="source.tool" class="data-source" :class="`source-${source.status.toLowerCase()}`">
@@ -87,13 +93,54 @@
       </footer>
       <div class="assistant-notice">AI 回答仅作辅助参考，不执行系统操作。</div>
     </section>
+
+    <el-dialog v-model="consentDialogVisible" title="确认用户协议与隐私政策" width="520px" append-to-body :close-on-click-modal="false">
+      <p class="consent-intro">使用后台 AI 助手前，请阅读并确认平台用户协议、隐私政策、AI 使用范围、第三方模型数据处理方式、审计留存期限和投诉举报渠道。</p>
+      <el-checkbox v-model="consentChecked">
+        我已阅读并同意
+        <button type="button" class="dialog-policy-link" @click.stop="policyDialogVisible = true">《用户协议》和《隐私政策》</button>
+      </el-checkbox>
+      <template #footer>
+        <el-button @click="consentDialogVisible = false">暂不使用</el-button>
+        <el-button type="primary" :disabled="!consentChecked" :loading="confirmingConsent" @click="confirmConsent">确认并打开 AI 助手</el-button>
+      </template>
+    </el-dialog>
+
+    <AiAssistantPolicyDialog v-model="policyDialogVisible" />
+
+    <el-dialog v-model="complaintDialogVisible" title="投诉或举报 AI 回答" width="480px" append-to-body>
+      <el-alert title="提交内容仅用于平台人工处理，不会发送给 AI 模型。预计在 3 日内反馈处理结果。" type="info" :closable="false" show-icon />
+      <el-form class="complaint-form" label-position="top">
+        <el-form-item label="问题类型" required>
+          <el-select v-model="complaintForm.category" class="complaint-full-width">
+            <el-option label="回答内容不准确" value="CONTENT_QUALITY" />
+            <el-option label="数据或权限问题" value="DATA_ISSUE" />
+            <el-option label="安全或隐私风险" value="SECURITY_PRIVACY" />
+            <el-option label="违规使用举报" value="MISUSE_REPORT" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="关联对话请求标识">
+          <el-input v-model="complaintForm.requestId" maxlength="64" placeholder="自动带入最近一次 AI 回答，可按需修改" clearable />
+        </el-form-item>
+        <el-form-item label="说明" required>
+          <el-input v-model="complaintForm.content" type="textarea" :rows="5" maxlength="1000" show-word-limit placeholder="请说明问题、影响和期望处理方式" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="complaintDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submittingComplaint" @click="submitComplaint">提交</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { nextTick, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { chatWithAdminAssistant, type AdminAssistantChatResponse } from '@/api/ai'
+import { chatWithAdminAssistant, clearAdminAssistantConversation, type AdminAssistantChatResponse } from '@/api/ai'
+import { acceptAiAssistantConsent, createAiAssistantComplaint, getAiAssistantConsentStatus, type AiAssistantComplaintCategory } from '@/api/system'
+import AiAssistantPolicyDialog from '@/components/AiAssistantPolicyDialog.vue'
+import { AI_ASSISTANT_POLICY_VERSION } from '@/constants/aiAssistantPolicy'
 
 interface AssistantMessage {
   id: number
@@ -105,8 +152,21 @@ interface AssistantMessage {
 const opened = ref(false)
 const question = ref('')
 const sending = ref(false)
+const clearingConversation = ref(false)
 const messages = ref<AssistantMessage[]>([])
+const conversationId = ref<string | undefined>(undefined)
 const messageContainer = ref<HTMLElement>()
+const complaintDialogVisible = ref(false)
+const consentDialogVisible = ref(false)
+const policyDialogVisible = ref(false)
+const consentChecked = ref(false)
+const confirmingConsent = ref(false)
+const submittingComplaint = ref(false)
+const complaintForm = reactive<{ category: AiAssistantComplaintCategory; requestId: string; content: string }>({
+  category: 'CONTENT_QUALITY',
+  requestId: '',
+  content: ''
+})
 
 const suggestions = [
   '设备历史曲线的统计间隔如何选择？',
@@ -115,14 +175,82 @@ const suggestions = [
   '退款中订单为什么没有变成已退款？'
 ]
 
-function openPanel() {
-  opened.value = true
-  scrollToBottom()
+async function openPanel() {
+  try {
+    const result = await getAiAssistantConsentStatus()
+    if (result.data.accepted && result.data.policyVersion === AI_ASSISTANT_POLICY_VERSION) {
+      opened.value = true
+      scrollToBottom()
+      return
+    }
+    consentChecked.value = false
+    consentDialogVisible.value = true
+  } catch (error) {
+    console.error('load AI consent status failed', error)
+    ElMessage.warning('暂时无法确认用户协议与隐私政策状态，请稍后重试。')
+  }
 }
 
-function clearConversation() {
-  messages.value = []
-  question.value = ''
+async function confirmConsent() {
+  if (!consentChecked.value || confirmingConsent.value) return
+  confirmingConsent.value = true
+  try {
+    await acceptAiAssistantConsent({ policyVersion: AI_ASSISTANT_POLICY_VERSION, source: 'ASSISTANT_PANEL' })
+    consentDialogVisible.value = false
+    opened.value = true
+    scrollToBottom()
+  } finally {
+    confirmingConsent.value = false
+  }
+}
+
+async function clearConversation() {
+  if (sending.value || clearingConversation.value) return
+  const activeConversationId = conversationId.value
+  clearingConversation.value = true
+  try {
+    if (activeConversationId) {
+      await clearAdminAssistantConversation(activeConversationId)
+    }
+    messages.value = []
+    question.value = ''
+    conversationId.value = undefined
+    ElMessage.success('本次对话已清空')
+  } catch (error) {
+    console.error('clear AI conversation failed', error)
+    ElMessage.warning('服务端会话清理失败，请稍后重试。')
+  } finally {
+    clearingConversation.value = false
+  }
+}
+
+function openComplaintDialog() {
+  const latestAssistantMessage = [...messages.value].reverse()
+    .find((message) => message.role === 'assistant' && message.response?.requestId)
+  complaintForm.category = 'CONTENT_QUALITY'
+  complaintForm.requestId = latestAssistantMessage?.response?.requestId || ''
+  complaintForm.content = ''
+  complaintDialogVisible.value = true
+}
+
+async function submitComplaint() {
+  const content = complaintForm.content.trim()
+  if (!content) {
+    ElMessage.warning('请填写投诉或举报说明')
+    return
+  }
+  submittingComplaint.value = true
+  try {
+    const result = await createAiAssistantComplaint({
+      category: complaintForm.category,
+      requestId: complaintForm.requestId.trim() || undefined,
+      content
+    })
+    complaintDialogVisible.value = false
+    ElMessage.success(`已提交，受理编号：${result.data.complaintNo}`)
+  } finally {
+    submittingComplaint.value = false
+  }
 }
 
 function askSuggestion(value: string) {
@@ -140,8 +268,11 @@ async function sendQuestion() {
   scrollToBottom()
 
   try {
-    const result = await chatWithAdminAssistant(content)
+    const result = await chatWithAdminAssistant(content, conversationId.value)
     const response = result.data
+    if (response.conversationId) {
+      conversationId.value = response.conversationId
+    }
     messages.value.push({
       id: Date.now() + 1,
       role: 'assistant',
@@ -149,7 +280,10 @@ async function sendQuestion() {
       response
     })
   } catch (error: any) {
-    const message = error?.message?.includes('timeout') ? 'AI 助手响应超时，请稍后重试。' : 'AI 助手暂时不可用，请稍后重试。'
+    const rawMessage = String(error?.message || '')
+    const message = rawMessage.includes('协议') || rawMessage.includes('隐私')
+      ? '请先阅读并同意用户协议与隐私政策后再使用助手。'
+      : rawMessage.includes('timeout') ? 'AI 助手响应超时，请稍后重试。' : 'AI 助手暂时不可用，请稍后重试。'
     messages.value.push({ id: Date.now() + 1, role: 'assistant', content: message })
     ElMessage.warning(message)
   } finally {
@@ -242,6 +376,7 @@ function scrollToBottom() {
 .message.user .message-label { margin-right: 4px; }
 .message.user .message-bubble { background: #1677ff; color: #fff; }
 .message-bubble.loading { color: #637489; }
+.ai-generated-label { width: fit-content; margin: 6px 0 0 2px; padding: 2px 7px; border: 1px solid #d7e6f8; border-radius: 10px; background: #eff6ff; color: #4b78a8; font-size: 11px; line-height: 1.4; }
 
 .source-list { display: grid; gap: 7px; margin-top: 8px; }
 .data-source { padding: 9px 10px; border: 1px solid #dfe7f0; border-radius: 6px; background: #fff; }
@@ -258,6 +393,12 @@ function scrollToBottom() {
 .assistant-composer :deep(.el-textarea__inner) { padding-right: 10px; }
 .assistant-composer .el-button { width: 36px; height: 36px; }
 .assistant-notice { padding: 0 12px 10px; background: #fff; color: #9aa7b7; font-size: 11px; text-align: center; }
+.assistant-complaint-button { min-width: auto; padding: 4px 6px; color: #53657a; font-size: 12px; }
+.assistant-complaint-button:hover { color: #1677ff; }
+.complaint-form { margin-top: 16px; }
+.complaint-full-width { width: 100%; }
+.consent-intro { margin: 0 0 16px; color: #53657a; line-height: 1.7; }
+.dialog-policy-link { margin: 0; padding: 0; border: 0; background: transparent; color: #1677ff; cursor: pointer; font: inherit; }
 
 @media (max-width: 640px) {
   .ai-assistant { right: 12px; bottom: 12px; }

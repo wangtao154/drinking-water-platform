@@ -598,6 +598,10 @@ export interface SysAccountVO {
   lastLoginIp?: string
   lastLoginAt?: string
   status: string
+  identityVerified?: boolean
+  identityVerifiedAt?: string
+  identityVerifiedBy?: number
+  identityVerificationMethod?: string
   createdAt: string
   updatedAt: string
 }

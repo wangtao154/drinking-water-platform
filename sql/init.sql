@@ -806,6 +806,10 @@ CREATE TABLE IF NOT EXISTS sys_user (
     last_login_ip   VARCHAR(45)                            COMMENT '最近登录IP',
     last_login_at   DATETIME(3)                            COMMENT '最近登录时间',
     status          VARCHAR(16)   NOT NULL DEFAULT 'ENABLED' COMMENT '状态：ENABLED/DISABLED',
+    identity_verified TINYINT(1)  NOT NULL DEFAULT 0       COMMENT '是否已完成姓名和手机号人工核验',
+    identity_verified_at DATETIME(3)                        COMMENT '最近一次身份核验时间',
+    identity_verified_by BIGINT                             COMMENT '最近一次核验操作人ID',
+    identity_verification_method VARCHAR(64)                COMMENT '核验方式',
     created_at      DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at      DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     deleted         TINYINT(1)    NOT NULL DEFAULT 0,
@@ -813,7 +817,8 @@ CREATE TABLE IF NOT EXISTS sys_user (
     UNIQUE KEY uk_employee_no (employee_no),
     UNIQUE KEY uk_username (username),
     KEY idx_role_id (role_id),
-    KEY idx_status (status)
+    KEY idx_status (status),
+    KEY idx_identity_verified (identity_verified)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='后台账户表';
 
 -- 12.3 审计日志表
@@ -841,6 +846,159 @@ CREATE TABLE IF NOT EXISTS audit_log (
     KEY idx_created_at (created_at),
     KEY idx_trace_id (trace_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审计日志表（操作日志全审计）';
+
+-- 12.3.1 AI 助手合规审计日志：不保存完整对话，只保存元数据、哈希和脱敏摘要
+CREATE TABLE IF NOT EXISTS ai_assistant_audit_log (
+    id                          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    request_id                  VARCHAR(64)   NOT NULL                COMMENT '一次对话请求唯一标识',
+    operator_id                 BIGINT        NOT NULL                COMMENT '后台调用账户ID',
+    operator_name_masked        VARCHAR(64)                           COMMENT '调用人脱敏名称快照',
+    model_name                  VARCHAR(128)                          COMMENT '实际调用模型，降级时为空',
+    result_status               VARCHAR(24)   NOT NULL                COMMENT 'SUCCESS/FALLBACK/REJECTED/ERROR',
+    fallback                    TINYINT(1)    NOT NULL DEFAULT 0      COMMENT '是否降级回答',
+    tool_names                  VARCHAR(512)                          COMMENT '受控只读工具名称列表',
+    knowledge_document_ids      VARCHAR(512)                          COMMENT '知识库文档ID列表',
+    question_digest             CHAR(64)                              COMMENT '问题SHA-256摘要',
+    question_summary_masked     VARCHAR(256)                          COMMENT '问题脱敏摘要',
+    answer_digest               CHAR(64)                              COMMENT '回答SHA-256摘要',
+    answer_summary_masked       VARCHAR(256)                          COMMENT '回答脱敏摘要',
+    error_code                  VARCHAR(64)                           COMMENT '失败代码',
+    error_summary_masked        VARCHAR(256)                          COMMENT '失败原因脱敏摘要',
+    integrity_version           VARCHAR(32)                           COMMENT '完整性算法版本',
+    previous_hash               CHAR(64)                              COMMENT '上一条审计记录哈希',
+    record_hash                 CHAR(64)                              COMMENT '本条审计记录哈希',
+    account_cancelled_at        DATETIME(3)                           COMMENT '账户注销/删除时间',
+    retention_until             DATETIME(3)   NOT NULL                COMMENT '最早清理时间',
+    created_at                  DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ai_audit_request_id (request_id),
+    KEY idx_ai_audit_operator_id (operator_id),
+    KEY idx_ai_audit_retention_until (retention_until),
+    KEY idx_ai_audit_created_at (created_at),
+    KEY idx_ai_audit_record_hash (record_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI助手合规审计日志（仅元数据与脱敏摘要）';
+
+CREATE TABLE IF NOT EXISTS ai_assistant_audit_chain_state (
+    id               TINYINT      NOT NULL COMMENT '固定为1的单行链状态',
+    last_log_id      BIGINT       NULL COMMENT '最后一条已封存审计记录ID',
+    last_record_hash CHAR(64)     NULL COMMENT '最后一条已封存审计记录哈希',
+    updated_at       DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                                  ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI助手审计哈希链状态';
+
+INSERT IGNORE INTO ai_assistant_audit_chain_state (id, last_log_id, last_record_hash)
+VALUES (1, NULL, NULL);
+
+-- AI 审计记录只允许追加；注销保留时间只能延长，避免应用误改或误删审计证据。
+DROP TRIGGER IF EXISTS trg_ai_audit_log_before_update;
+DROP TRIGGER IF EXISTS trg_ai_audit_log_before_delete;
+DELIMITER $$
+CREATE TRIGGER trg_ai_audit_log_before_update
+BEFORE UPDATE ON ai_assistant_audit_log
+FOR EACH ROW
+BEGIN
+    IF NOT (OLD.request_id <=> NEW.request_id)
+       OR NOT (OLD.operator_id <=> NEW.operator_id)
+       OR NOT (OLD.operator_name_masked <=> NEW.operator_name_masked)
+       OR NOT (OLD.model_name <=> NEW.model_name)
+       OR NOT (OLD.result_status <=> NEW.result_status)
+       OR NOT (OLD.fallback <=> NEW.fallback)
+       OR NOT (OLD.tool_names <=> NEW.tool_names)
+       OR NOT (OLD.knowledge_document_ids <=> NEW.knowledge_document_ids)
+       OR NOT (OLD.question_digest <=> NEW.question_digest)
+       OR NOT (OLD.question_summary_masked <=> NEW.question_summary_masked)
+       OR NOT (OLD.answer_digest <=> NEW.answer_digest)
+       OR NOT (OLD.answer_summary_masked <=> NEW.answer_summary_masked)
+       OR NOT (OLD.error_code <=> NEW.error_code)
+       OR NOT (OLD.error_summary_masked <=> NEW.error_summary_masked)
+       OR NOT (OLD.integrity_version <=> NEW.integrity_version)
+       OR NOT (OLD.previous_hash <=> NEW.previous_hash)
+       OR NOT (OLD.record_hash <=> NEW.record_hash)
+       OR NOT (OLD.created_at <=> NEW.created_at) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'AI audit log is append-only';
+    END IF;
+    IF NEW.retention_until < OLD.retention_until THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'AI audit retention cannot be reduced';
+    END IF;
+    IF OLD.account_cancelled_at IS NOT NULL
+       AND NOT (OLD.account_cancelled_at <=> NEW.account_cancelled_at) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'AI audit cancellation hold cannot be changed';
+    END IF;
+END$$
+
+CREATE TRIGGER trg_ai_audit_log_before_delete
+BEFORE DELETE ON ai_assistant_audit_log
+FOR EACH ROW
+BEGIN
+    IF OLD.retention_until >= NOW(3) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'AI audit retention period has not expired';
+    END IF;
+END$$
+DELIMITER ;
+
+-- 12.3.2 后台AI使用者身份核验记录
+CREATE TABLE IF NOT EXISTS sys_user_identity_verification_log (
+    id                      BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    account_id              BIGINT        NOT NULL                COMMENT '被核验后台账户ID',
+    verified                TINYINT(1)    NOT NULL                COMMENT '核验结果：1已核验/0已撤销或失效',
+    verification_method     VARCHAR(64)   NOT NULL                COMMENT '核验方式或失效原因',
+    verified_by             BIGINT                                COMMENT '核验操作人ID',
+    verified_at             DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '操作时间',
+    account_name            VARCHAR(64)                           COMMENT '核验时账户姓名快照',
+    phone_masked            VARCHAR(32)                           COMMENT '核验时手机号脱敏快照',
+    PRIMARY KEY (id),
+    KEY idx_identity_log_account_id (account_id),
+    KEY idx_identity_log_verified_at (verified_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='后台AI使用者身份核验记录';
+
+-- 12.3.3 后台AI助手投诉举报与处理闭环记录
+CREATE TABLE IF NOT EXISTS ai_assistant_complaint (
+    id                    BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    complaint_no          VARCHAR(40)   NOT NULL                COMMENT '投诉或举报编号',
+    reporter_id           BIGINT        NOT NULL                COMMENT '提交人后台账户ID',
+    reporter_name         VARCHAR(64)   NOT NULL                COMMENT '提交人名称快照',
+    category              VARCHAR(32)   NOT NULL                COMMENT 'CONTENT_QUALITY/DATA_ISSUE/SECURITY_PRIVACY/MISUSE_REPORT',
+    content               VARCHAR(1000) NOT NULL                COMMENT '投诉或举报说明，仅用于人工处理',
+    request_id            VARCHAR(64)                           COMMENT '关联的AI对话请求标识',
+    status                VARCHAR(24)   NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/PROCESSING/RESOLVED/REJECTED',
+    handle_reply          VARCHAR(1000)                         COMMENT '处理答复',
+    handler_id            BIGINT                                COMMENT '处理人后台账户ID',
+    handler_name          VARCHAR(64)                           COMMENT '处理人名称快照',
+    reply_due_at          DATETIME(3)   NOT NULL                COMMENT '预计处理截止时间',
+    handled_at            DATETIME(3)                           COMMENT '最终处理时间',
+    account_cancelled_at  DATETIME(3)                           COMMENT '提交人账户注销/删除时间',
+    retention_until       DATETIME(3)   NOT NULL                COMMENT '最早清理时间',
+    created_at            DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at            DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ai_complaint_no (complaint_no),
+    KEY idx_ai_complaint_status (status),
+    KEY idx_ai_complaint_reporter (reporter_id),
+    KEY idx_ai_complaint_created_at (created_at),
+    KEY idx_ai_complaint_retention_until (retention_until)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='后台AI助手投诉举报与处理闭环记录';
+
+-- 12.3.4 后台AI使用协议与隐私说明同意记录
+CREATE TABLE IF NOT EXISTS ai_assistant_consent_log (
+    id                    BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    account_id            BIGINT       NOT NULL                COMMENT '后台账户ID',
+    account_name          VARCHAR(64)                          COMMENT '同意时账户名称快照',
+    consent_type          VARCHAR(32)  NOT NULL                COMMENT 'AI_SERVICE_PRIVACY',
+    policy_version        VARCHAR(32)  NOT NULL                COMMENT '协议与隐私说明版本',
+    accepted              TINYINT(1)   NOT NULL DEFAULT 1      COMMENT '是否同意：1同意',
+    consent_source        VARCHAR(32)  NOT NULL                COMMENT 'LOGIN/ASSISTANT_PANEL',
+    accepted_at           DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '首次同意时间',
+    last_confirmed_at     DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '最近确认时间',
+    account_cancelled_at  DATETIME(3)                          COMMENT '账户注销/删除时间',
+    retention_until       DATETIME(3)  NOT NULL                COMMENT '最早清理时间',
+    created_at            DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at            DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ai_consent_account_policy (account_id, consent_type, policy_version),
+    KEY idx_ai_consent_retention_until (retention_until),
+    KEY idx_ai_consent_accepted_at (accepted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='后台AI使用协议与隐私说明同意记录';
 
 -- 12.4 系统配置表
 CREATE TABLE IF NOT EXISTS sys_config (

@@ -1,6 +1,7 @@
 import service from '@/utils/request'
 
 const BASE = '/v1/ai'
+const ADMIN_ASSISTANT_REQUEST_TIMEOUT_MS = 120000
 
 export interface AiMetricVO {
   field: string
@@ -110,6 +111,8 @@ export interface AdminAssistantDataSourceVO {
 }
 
 export interface AdminAssistantChatResponse {
+  requestId?: string
+  conversationId?: string
   answer: string
   model?: string | null
   fallback: boolean
@@ -127,11 +130,23 @@ export function predictRoMembrane(params: RoMembranePredictionParams) {
   }) as unknown as Promise<{ code: number; message: string; data: RoMembranePredictionVO; timestamp: number }>
 }
 
-export function chatWithAdminAssistant(question: string) {
+export function chatWithAdminAssistant(question: string, conversationId?: string) {
+  const data: Record<string, string> = { question }
+  if (conversationId) {
+    data.conversationId = conversationId
+  }
   return service({
     method: 'POST',
     url: `${BASE}/assistant/chat`,
-    data: { question },
-    timeout: 60000
+    data,
+    timeout: ADMIN_ASSISTANT_REQUEST_TIMEOUT_MS
   }) as unknown as Promise<{ code: number; message: string; data: AdminAssistantChatResponse; timestamp: number }>
+}
+
+export function clearAdminAssistantConversation(conversationId: string) {
+  return service({
+    method: 'DELETE',
+    url: `${BASE}/assistant/conversations/${encodeURIComponent(conversationId)}`,
+    timeout: 10000
+  }) as unknown as Promise<{ code: number; message: string; data: null; timestamp: number }>
 }

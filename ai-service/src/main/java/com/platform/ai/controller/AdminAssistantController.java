@@ -7,6 +7,8 @@ import com.platform.common.auth.RequirePermission;
 import com.platform.common.result.R;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,5 +29,11 @@ public class AdminAssistantController {
     @PostMapping("/chat")
     public R<AdminAssistantChatResponse> chat(@Valid @RequestBody AdminAssistantChatRequest request) {
         return R.ok(adminAssistantService.chat(request));
+    }
+
+    @DeleteMapping("/conversations/{conversationId}")
+    public R<Void> clearConversation(@PathVariable String conversationId) {
+        adminAssistantService.clearConversation(conversationId);
+        return R.ok(null);
     }
 }

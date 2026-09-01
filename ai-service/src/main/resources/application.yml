@@ -67,6 +67,10 @@ ai:
     max-answer-chars: ${AI_ASSISTANT_MAX_ANSWER_CHARS:4000}
     rate-limit-window-seconds: ${AI_ASSISTANT_RATE_LIMIT_WINDOW_SECONDS:60}
     max-requests-per-user: ${AI_ASSISTANT_MAX_REQUESTS_PER_USER:8}
+    conversation-cleanup-interval-ms: ${AI_ASSISTANT_CONVERSATION_CLEANUP_INTERVAL_MS:300000}
+    audit:
+      retention-months: ${AI_ASSISTANT_AUDIT_RETENTION_MONTHS:6}
+      cleanup-cron: ${AI_ASSISTANT_AUDIT_CLEANUP_CRON:0 15 3 * * *}
     tools:
       enabled: ${AI_ASSISTANT_TOOLS_ENABLED:true}
       timeout-seconds: ${AI_ASSISTANT_TOOL_TIMEOUT_SECONDS:5}

@@ -19,6 +19,14 @@
             @keyup.enter="handleLogin"
           />
         </el-form-item>
+        <el-form-item prop="aiConsent" class="ai-consent-item">
+          <el-checkbox v-model="form.aiConsent">
+            我已阅读并同意
+            <button type="button" class="policy-link" @click.stop="policyDialogVisible = true">《用户协议》</button>
+            和
+            <button type="button" class="policy-link" @click.stop="policyDialogVisible = true">《隐私政策》</button>
+          </el-checkbox>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" native-type="submit" style="width: 100%" :loading="loading">
             登录
@@ -26,6 +34,7 @@
         </el-form-item>
       </el-form>
     </div>
+    <AiAssistantPolicyDialog v-model="policyDialogVisible" />
   </div>
 </template>
 
@@ -34,6 +43,9 @@ import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import AiAssistantPolicyDialog from '@/components/AiAssistantPolicyDialog.vue'
+import { AI_ASSISTANT_POLICY_VERSION } from '@/constants/aiAssistantPolicy'
+import { acceptAiAssistantConsent } from '@/api/system'
 
 const router = useRouter()
 const route = useRoute()
@@ -41,15 +53,21 @@ const userStore = useUserStore()
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+const policyDialogVisible = ref(false)
 
 const form = reactive({
   account: '',
-  password: ''
+  password: '',
+  aiConsent: false
 })
 
 const rules: FormRules = {
   account: [{ required: true, message: '请输入账号', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+  aiConsent: [{
+    validator: (_rule, value, callback) => value ? callback() : callback(new Error('请先阅读并同意用户协议与隐私政策')),
+    trigger: 'change'
+  }]
 }
 
 async function handleLogin() {
@@ -60,7 +78,13 @@ async function handleLogin() {
 
   loading.value = true
   try {
-    await userStore.login(form)
+    await userStore.login({ account: form.account, password: form.password })
+    try {
+      await acceptAiAssistantConsent({ policyVersion: AI_ASSISTANT_POLICY_VERSION, source: 'LOGIN' })
+    } catch (consentError) {
+      console.warn('Platform policy confirmation recording unavailable; AI assistant remains unavailable until confirmed.', consentError)
+      ElMessage.warning('用户协议与隐私政策确认记录暂不可用，已登录后台；AI 助手暂不可使用，请稍后重试。')
+    }
     ElMessage.success('登录成功')
     const redirect = (route.query.redirect as string) || '/dashboard'
     router.replace(redirect).catch((error) => {
@@ -68,6 +92,7 @@ async function handleLogin() {
     })
   } catch (error) {
     console.error('login error', error)
+  } finally {
     loading.value = false
   }
 }
@@ -105,4 +130,9 @@ async function handleLogin() {
     color: #909399;
   }
 }
+
+.ai-consent-item { margin-top: -4px; margin-bottom: 16px; }
+.ai-consent-item :deep(.el-form-item__content) { line-height: 1.55; }
+.ai-consent-item :deep(.el-checkbox__label) { color: #718096; font-size: 12px; white-space: normal; }
+.policy-link { margin: 0; padding: 0; border: 0; background: transparent; color: #1677ff; cursor: pointer; font: inherit; }
 </style>

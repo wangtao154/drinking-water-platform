@@ -2,13 +2,24 @@ package com.platform.system.service;
 
 import com.platform.common.result.PageResult;
 import com.platform.system.dto.AuditLogPageQueryDTO;
+import com.platform.system.dto.AiAssistantAuditLogPageQueryDTO;
+import com.platform.system.dto.AiAssistantComplaintCreateDTO;
+import com.platform.system.dto.AiAssistantComplaintHandleDTO;
+import com.platform.system.dto.AiAssistantComplaintPageQueryDTO;
+import com.platform.system.dto.AiAssistantConsentAcceptDTO;
 import com.platform.system.dto.ConfigUpdateDTO;
 import com.platform.system.dto.AccountCreateDTO;
+import com.platform.system.dto.AccountSelfCancellationDTO;
 import com.platform.system.dto.AccountUpdateDTO;
+import com.platform.system.dto.AccountIdentityVerificationDTO;
 import com.platform.system.dto.MqttConfigUpdateDTO;
 import com.platform.system.dto.RoleCreateDTO;
 import com.platform.system.dto.RolePermissionUpdateDTO;
 import com.platform.system.vo.AuditLogVO;
+import com.platform.system.vo.AiAssistantAuditLogVO;
+import com.platform.system.vo.AiAssistantAuditIntegrityVO;
+import com.platform.system.vo.AiAssistantComplaintVO;
+import com.platform.system.vo.AiAssistantConsentStatusVO;
 import com.platform.system.vo.MqttConfigVO;
 import com.platform.system.vo.SysAccountVO;
 import com.platform.system.vo.SysConfigVO;
@@ -30,6 +41,13 @@ public interface SystemService {
 
     // ===== 审计日志 =====
     PageResult<AuditLogVO> auditLogPage(AuditLogPageQueryDTO query);
+    PageResult<AiAssistantAuditLogVO> aiAssistantAuditLogPage(AiAssistantAuditLogPageQueryDTO query);
+    AiAssistantAuditIntegrityVO verifyAiAssistantAuditIntegrity();
+    AiAssistantComplaintVO createAiAssistantComplaint(AiAssistantComplaintCreateDTO dto);
+    PageResult<AiAssistantComplaintVO> aiAssistantComplaintPage(AiAssistantComplaintPageQueryDTO query);
+    AiAssistantComplaintVO handleAiAssistantComplaint(Long id, AiAssistantComplaintHandleDTO dto);
+    AiAssistantConsentStatusVO getAiAssistantConsentStatus();
+    AiAssistantConsentStatusVO acceptAiAssistantConsent(AiAssistantConsentAcceptDTO dto);
 
     // ===== 角色管理 =====
     PageResult<SysRoleVO> rolePage(Integer pageNum, Integer pageSize, String keyword);
@@ -45,7 +63,9 @@ public interface SystemService {
     PageResult<SysAccountVO> accountPage(Integer pageNum, Integer pageSize, String keyword);
     SysAccountVO createAccount(AccountCreateDTO dto);
     SysAccountVO updateAccount(Long id, AccountUpdateDTO dto);
+    SysAccountVO updateAccountIdentityVerification(Long id, AccountIdentityVerificationDTO dto);
     void deleteAccount(Long id);
+    void cancelCurrentAccount(AccountSelfCancellationDTO dto);
     void resetPassword(Long id, String newPassword);
 
     // ===== MQTT 配置管理 =====

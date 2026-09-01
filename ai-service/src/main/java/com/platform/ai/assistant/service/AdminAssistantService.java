@@ -6,4 +6,6 @@ import com.platform.ai.assistant.dto.AdminAssistantChatResponse;
 public interface AdminAssistantService {
 
     AdminAssistantChatResponse chat(AdminAssistantChatRequest request);
+
+    void clearConversation(String conversationId);
 }

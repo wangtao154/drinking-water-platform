@@ -28,6 +28,13 @@
         <el-table-column prop="phone" label="手机号" min-width="120" />
         <el-table-column prop="email" label="邮箱" min-width="160" show-overflow-tooltip />
         <el-table-column prop="department" label="部门" min-width="120" />
+        <el-table-column label="身份核验" min-width="140">
+          <template #default="{ row }">
+            <el-tag v-if="row.identityVerified" type="success">已核验</el-tag>
+            <el-tag v-else type="info">未核验</el-tag>
+            <div v-if="row.identityVerifiedAt" class="verification-time">{{ formatDateTime(row.identityVerifiedAt) }}</div>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="80">
           <template #default="{ row }">
             <el-tag :type="row.status === 'ENABLED' ? 'success' : 'danger'">
@@ -38,10 +45,20 @@
         <el-table-column prop="lastLoginAt" label="最近登录" min-width="160">
           <template #default="{ row }">{{ formatDateTime(row.lastLoginAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="openEditDialog(row as any)">编辑</el-button>
             <el-button type="warning" link size="small" @click="openResetDialog(row as any)">重置密码</el-button>
+            <el-popconfirm
+              :title="row.identityVerified ? '确认取消该账户的身份核验？' : '确认已核验该账户的真实姓名和手机号？'"
+              @confirm="handleIdentityVerification(row as any, !row.identityVerified)"
+            >
+              <template #reference>
+                <el-button :type="row.identityVerified ? 'info' : 'success'" link size="small">
+                  {{ row.identityVerified ? '取消核验' : '核验身份' }}
+                </el-button>
+              </template>
+            </el-popconfirm>
             <el-popconfirm title="确认删除该账户？" @confirm="handleDelete(row as any)">
               <template #reference>
                 <el-button type="danger" link size="small">删除</el-button>
@@ -140,7 +157,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, type FormInstance } from 'element-plus'
-import { pageUsers, createUser, updateUser, deleteUser, resetPassword, listAllRoles } from '@/api/system'
+import { pageUsers, createUser, updateUser, deleteUser, resetPassword, updateUserIdentityVerification, listAllRoles } from '@/api/system'
 import type { SysAccountVO, SysRoleVO } from '@/types/api'
 import { formatDateTime } from '@/utils/format'
 
@@ -243,6 +260,16 @@ async function handleDelete(row: SysAccountVO) {
   }
 }
 
+async function handleIdentityVerification(row: SysAccountVO, verified: boolean) {
+  try {
+    await updateUserIdentityVerification(row.id, verified)
+    ElMessage.success(verified ? '身份核验完成' : '已取消身份核验')
+    loadData()
+  } catch (e) {
+    // Error message is handled by the request interceptor.
+  }
+}
+
 function openResetDialog(row: SysAccountVO) {
   currentRow.value = row
   newPassword.value = ''
@@ -270,4 +297,5 @@ onMounted(() => { loadData(); loadRoles() })
 .users-page { padding: 16px; }
 .search-card { margin-bottom: 12px; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
+.verification-time { margin-top: 4px; color: var(--el-text-color-secondary); font-size: 12px; }
 </style>

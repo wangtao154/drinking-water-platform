@@ -22,6 +22,10 @@ public class SysAccountVO implements Serializable {
     private String lastLoginIp;
     private LocalDateTime lastLoginAt;
     private String status;
+    private Boolean identityVerified;
+    private LocalDateTime identityVerifiedAt;
+    private Long identityVerifiedBy;
+    private String identityVerificationMethod;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -39,6 +43,10 @@ public class SysAccountVO implements Serializable {
         vo.setLastLoginIp(e.getLastLoginIp());
         vo.setLastLoginAt(e.getLastLoginAt());
         vo.setStatus(e.getStatus());
+        vo.setIdentityVerified(Boolean.TRUE.equals(e.getIdentityVerified()));
+        vo.setIdentityVerifiedAt(e.getIdentityVerifiedAt());
+        vo.setIdentityVerifiedBy(e.getIdentityVerifiedBy());
+        vo.setIdentityVerificationMethod(e.getIdentityVerificationMethod());
         vo.setCreatedAt(e.getCreatedAt());
         vo.setUpdatedAt(e.getUpdatedAt());
         return vo;

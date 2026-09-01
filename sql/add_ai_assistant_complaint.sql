@@ -1,0 +1,26 @@
+-- AI助手投诉与举报闭环：仅面向后台管理系统，不会发送给第三方模型。
+CREATE TABLE IF NOT EXISTS ai_assistant_complaint (
+    id                    BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    complaint_no          VARCHAR(40)   NOT NULL                COMMENT '投诉或举报编号',
+    reporter_id           BIGINT        NOT NULL                COMMENT '提交人后台账户ID',
+    reporter_name         VARCHAR(64)   NOT NULL                COMMENT '提交人名称快照',
+    category              VARCHAR(32)   NOT NULL                COMMENT 'CONTENT_QUALITY/DATA_ISSUE/SECURITY_PRIVACY/MISUSE_REPORT',
+    content               VARCHAR(1000) NOT NULL                COMMENT '投诉或举报说明，仅用于人工处理',
+    request_id            VARCHAR(64)                           COMMENT '关联的AI对话请求标识',
+    status                VARCHAR(24)   NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/PROCESSING/RESOLVED/REJECTED',
+    handle_reply          VARCHAR(1000)                         COMMENT '处理答复',
+    handler_id            BIGINT                                COMMENT '处理人后台账户ID',
+    handler_name          VARCHAR(64)                           COMMENT '处理人名称快照',
+    reply_due_at          DATETIME(3)   NOT NULL                COMMENT '预计处理截止时间',
+    handled_at            DATETIME(3)                           COMMENT '最终处理时间',
+    account_cancelled_at  DATETIME(3)                           COMMENT '提交人账户注销/删除时间',
+    retention_until       DATETIME(3)   NOT NULL                COMMENT '最早清理时间',
+    created_at            DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at            DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ai_complaint_no (complaint_no),
+    KEY idx_ai_complaint_status (status),
+    KEY idx_ai_complaint_reporter (reporter_id),
+    KEY idx_ai_complaint_created_at (created_at),
+    KEY idx_ai_complaint_retention_until (retention_until)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='后台AI助手投诉举报与处理闭环记录';

@@ -4,14 +4,25 @@ import com.platform.common.result.PageResult;
 import com.platform.common.result.R;
 import com.platform.common.auth.RequirePermission;
 import com.platform.system.dto.AccountCreateDTO;
+import com.platform.system.dto.AccountSelfCancellationDTO;
 import com.platform.system.dto.AccountUpdateDTO;
+import com.platform.system.dto.AccountIdentityVerificationDTO;
 import com.platform.system.dto.AuditLogPageQueryDTO;
+import com.platform.system.dto.AiAssistantAuditLogPageQueryDTO;
+import com.platform.system.dto.AiAssistantComplaintCreateDTO;
+import com.platform.system.dto.AiAssistantComplaintHandleDTO;
+import com.platform.system.dto.AiAssistantComplaintPageQueryDTO;
+import com.platform.system.dto.AiAssistantConsentAcceptDTO;
 import com.platform.system.dto.ConfigUpdateDTO;
 import com.platform.system.dto.MqttConfigUpdateDTO;
 import com.platform.system.dto.RoleCreateDTO;
 import com.platform.system.dto.RolePermissionUpdateDTO;
 import com.platform.system.service.SystemService;
 import com.platform.system.vo.AuditLogVO;
+import com.platform.system.vo.AiAssistantAuditLogVO;
+import com.platform.system.vo.AiAssistantAuditIntegrityVO;
+import com.platform.system.vo.AiAssistantComplaintVO;
+import com.platform.system.vo.AiAssistantConsentStatusVO;
 import com.platform.system.vo.MqttConfigVO;
 import com.platform.system.vo.SysAccountVO;
 import com.platform.system.vo.SysConfigVO;
@@ -60,6 +71,51 @@ public class SystemController {
     @RequirePermission("SYSTEM_AUDIT")
     public R<PageResult<AuditLogVO>> auditLogPage(AuditLogPageQueryDTO query) {
         return R.ok(systemService.auditLogPage(query));
+    }
+
+    @GetMapping("/audit-logs/ai")
+    @RequirePermission("SYSTEM_AUDIT")
+    public R<PageResult<AiAssistantAuditLogVO>> aiAssistantAuditLogPage(AiAssistantAuditLogPageQueryDTO query) {
+        return R.ok(systemService.aiAssistantAuditLogPage(query));
+    }
+
+    @GetMapping("/audit-logs/ai/integrity")
+    @RequirePermission("SYSTEM_AUDIT")
+    public R<AiAssistantAuditIntegrityVO> verifyAiAssistantAuditIntegrity() {
+        return R.ok(systemService.verifyAiAssistantAuditIntegrity());
+    }
+
+    @PostMapping("/ai-complaints")
+    @RequirePermission("AI_ASSISTANT_VIEW")
+    public R<AiAssistantComplaintVO> createAiAssistantComplaint(
+            @Valid @RequestBody AiAssistantComplaintCreateDTO dto) {
+        return R.ok(systemService.createAiAssistantComplaint(dto));
+    }
+
+    @GetMapping("/audit-logs/ai-complaints")
+    @RequirePermission("SYSTEM_AUDIT")
+    public R<PageResult<AiAssistantComplaintVO>> aiAssistantComplaintPage(
+            AiAssistantComplaintPageQueryDTO query) {
+        return R.ok(systemService.aiAssistantComplaintPage(query));
+    }
+
+    @PutMapping("/audit-logs/ai-complaints/{id}")
+    @RequirePermission("SYSTEM_AUDIT")
+    public R<AiAssistantComplaintVO> handleAiAssistantComplaint(
+            @PathVariable Long id,
+            @Valid @RequestBody AiAssistantComplaintHandleDTO dto) {
+        return R.ok(systemService.handleAiAssistantComplaint(id, dto));
+    }
+
+    @GetMapping("/ai-consents/me")
+    public R<AiAssistantConsentStatusVO> getAiAssistantConsentStatus() {
+        return R.ok(systemService.getAiAssistantConsentStatus());
+    }
+
+    @PostMapping("/ai-consents/accept")
+    public R<AiAssistantConsentStatusVO> acceptAiAssistantConsent(
+            @Valid @RequestBody AiAssistantConsentAcceptDTO dto) {
+        return R.ok(systemService.acceptAiAssistantConsent(dto));
     }
 
     // ===== 角色管理 =====
@@ -140,10 +196,24 @@ public class SystemController {
         return R.ok(systemService.updateAccount(id, dto));
     }
 
+    @PutMapping("/users/{id}/identity-verification")
+    @RequirePermission("SYSTEM_USER")
+    public R<SysAccountVO> updateAccountIdentityVerification(
+            @PathVariable Long id,
+            @Valid @RequestBody AccountIdentityVerificationDTO dto) {
+        return R.ok(systemService.updateAccountIdentityVerification(id, dto));
+    }
+
     @DeleteMapping("/users/{id}")
     @RequirePermission("SYSTEM_USER")
     public R<Void> deleteAccount(@PathVariable Long id) {
         systemService.deleteAccount(id);
+        return R.ok(null);
+    }
+
+    @PostMapping("/users/me/cancellation")
+    public R<Void> cancelCurrentAccount(@Valid @RequestBody AccountSelfCancellationDTO dto) {
+        systemService.cancelCurrentAccount(dto);
         return R.ok(null);
     }
 

@@ -3,6 +3,22 @@ import type { PageQueryDTO, PageResult, SysPermissionVO, SysRoleVO, SysAccountVO
 
 const BASE = '/v1/system'
 
+export interface AiAssistantConsentStatusVO {
+  policyVersion: string
+  policyTitle: string
+  accepted: boolean
+  acceptedAt?: string
+  lastConfirmedAt?: string
+}
+
+export function getAiAssistantConsentStatus() {
+  return get<AiAssistantConsentStatusVO>(`${BASE}/ai-consents/me`)
+}
+
+export function acceptAiAssistantConsent(data: { policyVersion: string; source: 'LOGIN' | 'ASSISTANT_PANEL' }) {
+  return post<AiAssistantConsentStatusVO>(`${BASE}/ai-consents/accept`, data)
+}
+
 // ===== 角色管理 =====
 export function pageRoles(params: PageQueryDTO & { keyword?: string }) {
   return get<PageResult<SysRoleVO>>(`${BASE}/roles`, params)
@@ -60,8 +76,14 @@ export function updateUser(id: number, data: {
 export function deleteUser(id: number) {
   return del<null>(`${BASE}/users/${id}`)
 }
+export function cancelCurrentUserAccount(data: { password: string; confirmText: string }) {
+  return post<null>(`${BASE}/users/me/cancellation`, data)
+}
 export function resetPassword(id: number, password: string) {
   return put<null>(`${BASE}/users/${id}/reset-password`, { password })
+}
+export function updateUserIdentityVerification(id: number, verified: boolean) {
+  return put<SysAccountVO>(`${BASE}/users/${id}/identity-verification`, { verified })
 }
 
 // ===== 审计日志 =====
@@ -76,8 +98,103 @@ export interface AuditLogVO {
   createdAt?: string
 }
 
-export function pageAuditLogs(params: PageQueryDTO) {
+export function pageAuditLogs(params: PageQueryDTO & {
+  operatorId?: number
+  operation?: string
+  startTime?: string
+  endTime?: string
+}) {
   return get<PageResult<AuditLogVO>>(`${BASE}/audit-logs`, params)
+}
+
+export interface AiAssistantAuditLogVO {
+  id: number
+  requestId: string
+  operatorId: number
+  operatorNameMasked?: string
+  modelName?: string
+  resultStatus: 'SUCCESS' | 'FALLBACK' | 'REJECTED' | 'ERROR'
+  fallback: boolean
+  toolNames?: string
+  knowledgeDocumentIds?: string
+  questionSummaryMasked?: string
+  answerSummaryMasked?: string
+  errorCode?: string
+  errorSummaryMasked?: string
+  accountCancelledAt?: string
+  retentionUntil?: string
+  createdAt?: string
+}
+
+export interface AiAssistantAuditIntegrityVO {
+  status: 'VERIFIED' | 'LEGACY_UNSEALED' | 'FAILED'
+  message: string
+  totalRecords: number
+  checkedRecords: number
+  legacyUnsealedRecords: number
+  firstProblemRecordId?: number
+  firstProblemCreatedAt?: string
+  verifiedAt?: string
+}
+
+export function pageAiAssistantAuditLogs(params: PageQueryDTO & {
+  operatorId?: number
+  modelName?: string
+  resultStatus?: string
+  startTime?: string
+  endTime?: string
+}) {
+  return get<PageResult<AiAssistantAuditLogVO>>(`${BASE}/audit-logs/ai`, params)
+}
+
+export function getAiAssistantAuditIntegrity() {
+  return get<AiAssistantAuditIntegrityVO>(`${BASE}/audit-logs/ai/integrity`)
+}
+
+export type AiAssistantComplaintCategory = 'CONTENT_QUALITY' | 'DATA_ISSUE' | 'SECURITY_PRIVACY' | 'MISUSE_REPORT'
+export type AiAssistantComplaintStatus = 'PENDING' | 'PROCESSING' | 'RESOLVED' | 'REJECTED'
+
+export interface AiAssistantComplaintVO {
+  id: number
+  complaintNo: string
+  reporterId: number
+  reporterName: string
+  category: AiAssistantComplaintCategory
+  content: string
+  requestId?: string
+  status: AiAssistantComplaintStatus
+  handleReply?: string
+  handlerId?: number
+  handlerName?: string
+  replyDueAt?: string
+  handledAt?: string
+  createdAt?: string
+  retentionUntil?: string
+}
+
+export function createAiAssistantComplaint(data: {
+  category: AiAssistantComplaintCategory
+  content: string
+  requestId?: string
+}) {
+  return post<AiAssistantComplaintVO>(`${BASE}/ai-complaints`, data)
+}
+
+export function pageAiAssistantComplaints(params: PageQueryDTO & {
+  category?: AiAssistantComplaintCategory
+  status?: AiAssistantComplaintStatus
+  keyword?: string
+  startTime?: string
+  endTime?: string
+}) {
+  return get<PageResult<AiAssistantComplaintVO>>(`${BASE}/audit-logs/ai-complaints`, params)
+}
+
+export function handleAiAssistantComplaint(id: number, data: {
+  status: AiAssistantComplaintStatus
+  handleReply?: string
+}) {
+  return put<AiAssistantComplaintVO>(`${BASE}/audit-logs/ai-complaints/${id}`, data)
 }
 
 // ===== 系统配置 =====

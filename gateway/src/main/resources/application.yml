@@ -134,6 +134,9 @@ spring:
             - Path=/api/v1/ai/**
           filters:
             - StripPrefix=0
+          metadata:
+            connect-timeout: 10000
+            response-timeout: 130000
 
         # ---- inventory-service (P4) ----
         - id: inventory-service

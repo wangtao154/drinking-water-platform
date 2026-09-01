@@ -78,3 +78,7 @@ outputs/
 nul
 fetch_reference*.js
 screenshot-report.js
+
+# AI agent temp artifacts
+.codex-artifacts/
+.tmp/

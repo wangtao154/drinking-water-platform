@@ -3,6 +3,8 @@ package com.platform.report.service.impl;
 import com.influxdb.client.InfluxDBClient;
 import com.influxdb.query.FluxRecord;
 import com.influxdb.query.FluxTable;
+import com.platform.common.exception.BusinessException;
+import com.platform.common.result.ResultCode;
 import com.platform.report.dto.TelemetryExportRequest;
 import com.platform.report.service.ReportService;
 import com.platform.report.vo.DashboardVO;
@@ -64,7 +66,13 @@ public class ReportServiceImpl implements ReportService {
     private static final ZoneId CHINA_ZONE = ZoneId.of("Asia/Shanghai");
     private static final DateTimeFormatter DISPLAY_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Duration MAX_EXPORT_RANGE = Duration.ofDays(31);
-    private static final int MAX_EXPORT_ROWS = 200_000;
+    /**
+     * The exported workbook is pivoted as one timestamp per row and one point
+     * per column. Limit the total data cells instead of treating every point
+     * as a separate row, otherwise a normal month-long multi-point export is
+     * rejected even though the resulting Excel file is modest in size.
+     */
+    private static final long MAX_EXPORT_DATA_CELLS = 1_000_000L;
     private static final Pattern SN_PATTERN = Pattern.compile("^[A-Za-z0-9_-]{1,64}$");
     private static final Pattern POINT_PATTERN = Pattern.compile("^P\\d{1,3}$");
     private static final Set<String> ALLOWED_INTERVALS = Set.of(
@@ -266,10 +274,10 @@ public class ReportServiceImpl implements ReportService {
         Instant end = parseTime(request.getEndTime());
 
         if (!start.isBefore(end)) {
-            throw new IllegalArgumentException("开始时间必须早于结束时间");
+            throw exportValidationError("开始时间必须早于结束时间");
         }
         if (Duration.between(start, end).compareTo(MAX_EXPORT_RANGE) > 0) {
-            throw new IllegalArgumentException("单次导出时间范围不能超过 31 天");
+            throw exportValidationError("单次导出时间范围不能超过 31 天");
         }
 
         validateEstimatedExportSize(fields, start, end, interval);
@@ -299,7 +307,7 @@ public class ReportServiceImpl implements ReportService {
 
         List<FluxTable> tables = influxDBClient.getQueryApi().query(flux, influxOrg);
         TreeMap<Instant, Map<String, Object>> rows = new TreeMap<>();
-        int recordCount = 0;
+        long recordCount = 0;
         for (FluxTable table : tables) {
             for (FluxRecord record : table.getRecords()) {
                 if (record.getTime() == null || record.getField() == null) {
@@ -308,8 +316,8 @@ public class ReportServiceImpl implements ReportService {
                 rows.computeIfAbsent(record.getTime(), key -> new LinkedHashMap<>())
                         .put(record.getField(), record.getValue());
                 recordCount++;
-                if (recordCount > MAX_EXPORT_ROWS) {
-                    throw new IllegalArgumentException("导出数据量过大，请缩短时间范围或调大统计间隔");
+                if (recordCount > MAX_EXPORT_DATA_CELLS) {
+                    throw exportValidationError("导出数据量超过 100 万个数据单元，请缩短时间范围、减少点位或调大统计间隔");
                 }
             }
         }
@@ -423,7 +431,7 @@ public class ReportServiceImpl implements ReportService {
 
     private List<String> normalizeFields(String fields) {
         if (fields == null || fields.isBlank()) {
-            throw new IllegalArgumentException("请选择导出点位");
+            throw exportValidationError("请选择导出点位");
         }
         LinkedHashSet<String> normalized = Arrays.stream(fields.split(","))
                 .map(String::trim)
@@ -431,14 +439,14 @@ public class ReportServiceImpl implements ReportService {
                 .filter(field -> !field.isBlank())
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         if (normalized.isEmpty()) {
-            throw new IllegalArgumentException("请选择导出点位");
+            throw exportValidationError("请选择导出点位");
         }
         if (normalized.size() > 30) {
-            throw new IllegalArgumentException("单次最多导出 30 个点位");
+            throw exportValidationError("单次最多导出 30 个点位");
         }
         for (String field : normalized) {
             if (!POINT_PATTERN.matcher(field).matches()) {
-                throw new IllegalArgumentException("点位格式不正确: " + field);
+                throw exportValidationError("点位格式不正确: " + field);
             }
         }
         return new ArrayList<>(normalized);
@@ -447,7 +455,7 @@ public class ReportServiceImpl implements ReportService {
     private String normalizeInterval(String interval) {
         String normalized = interval == null || interval.isBlank() ? "10m" : interval.trim().toLowerCase();
         if (!ALLOWED_INTERVALS.contains(normalized)) {
-            throw new IllegalArgumentException("不支持的统计间隔: " + interval);
+            throw exportValidationError("不支持的统计间隔: " + interval);
         }
         return normalized;
     }
@@ -457,9 +465,15 @@ public class ReportServiceImpl implements ReportService {
         long seconds = Math.max(1L, Duration.between(start, end).getSeconds());
         long intervalSeconds = Math.max(1L, intervalDuration.getSeconds());
         long estimatedRecords = ((seconds + intervalSeconds - 1) / intervalSeconds) * fields.size();
-        if (estimatedRecords > MAX_EXPORT_ROWS) {
-            throw new IllegalArgumentException("导出数据量过大，请缩短时间范围或调大统计间隔");
+        if (estimatedRecords > MAX_EXPORT_DATA_CELLS) {
+            throw exportValidationError(String.format(
+                    "预计导出 %,d 个数据单元，超过单次 100 万限制；请缩短时间范围、减少点位或调大统计间隔",
+                    estimatedRecords));
         }
+    }
+
+    private BusinessException exportValidationError(String message) {
+        return new BusinessException(ResultCode.PARAM_INVALID, message);
     }
 
     private Duration parseIntervalDuration(String interval) {

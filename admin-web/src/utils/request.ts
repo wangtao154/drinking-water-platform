@@ -42,6 +42,18 @@ function redirectToLogin(): void {
   }
 }
 
+async function resolveResponseErrorMessage(data: unknown): Promise<string | undefined> {
+  if (data instanceof Blob) {
+    try {
+      const body = JSON.parse(await data.text())
+      return typeof body?.message === 'string' ? body.message : undefined
+    } catch {
+      return undefined
+    }
+  }
+  return typeof (data as any)?.message === 'string' ? (data as any).message : undefined
+}
+
 // 请求拦截
 service.interceptors.request.use(
   (config) => {
@@ -105,10 +117,11 @@ service.interceptors.response.use(
     ElMessage.error(res.message || '请求失败')
     return Promise.reject(new Error(res.message || 'Error'))
   },
-  (error) => {
+  async (error) => {
     NProgress.done()
     if (error.response) {
       const status = error.response.status
+      const serverMessage = await resolveResponseErrorMessage(error.response.data)
       if (status === 401) {
         // 旧 token 的并发请求可能晚于新登录返回，不能让它清掉刚写入的新 token。
         if (!shouldHandleAuthFailure(error.config)) {
@@ -121,10 +134,12 @@ service.interceptors.response.use(
         ElMessage.error('无权限访问')
       } else if (status === 404) {
         ElMessage.error('请求资源不存在')
+      } else if (serverMessage) {
+        ElMessage.error(serverMessage)
       } else if (status >= 500) {
         ElMessage.error('服务器内部错误')
       } else {
-        ElMessage.error(error.response.data?.message || '请求失败')
+        ElMessage.error('请求失败')
       }
     } else if (error.message?.includes('timeout')) {
       ElMessage.error('请求超时，请稍后重试')

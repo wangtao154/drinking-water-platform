@@ -37,15 +37,19 @@ public class AdminKnowledgeBase {
             "work-orders.md",
             "scan-orders-and-refunds.md",
             "reports-and-export.md",
-            "rbac-and-audit.md"
+            "rbac-and-audit.md",
+            "data-boundary.md"
     );
     private static final Map<String, List<String>> TOPIC_KEYWORDS = Map.of(
-            "device-and-telemetry", List.of("设备", "sn", "控制板", "在线", "离线", "心跳", "历史", "遥测", "曲线", "点位", "influx"),
+            "device-and-telemetry", List.of("设备", "sn", "控制板", "在线", "离线", "心跳", "历史", "遥测", "曲线", "点位", "influx",
+                    "滤芯", "pp棉", "活性炭", "ro膜", "更换", "维护", "寿命", "pp_cotton", "ro_membrane"),
             "alerts-and-thresholds", List.of("告警", "报警", "阈值", "未处理", "告警列表"),
             "work-orders", List.of("工单", "报修", "派单", "接单", "核验", "维修", "退机", "移机"),
-            "scan-orders-and-refunds", List.of("扫码", "取水", "订单", "支付", "退款", "q74", "ack", "出水"),
+            "scan-orders-and-refunds", List.of("扫码", "取水", "订单", "支付", "退款", "q74", "ack", "出水",
+                    "计费", "收费", "价格", "单价", "flow_based", "monthly_rent", "package_recharge", "shared", "冷水", "热水", "元/升"),
             "reports-and-export", List.of("报表", "导出", "excel", "统计", "数据导出", "时间间隔"),
-            "rbac-and-audit", List.of("角色", "权限", "账户", "用户", "审计", "登录", "管理员")
+            "rbac-and-audit", List.of("角色", "权限", "账户", "用户", "审计", "登录", "管理员"),
+            "data-boundary", List.of("隐私", "脱敏", "千问", "第三方", "模型", "数据边界", "敏感", "openid", "密钥", "token")
     );
 
     private final AdminAssistantProperties properties;

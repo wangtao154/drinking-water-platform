@@ -71,6 +71,15 @@
           </el-select>
         </el-form-item>
 
+        <el-alert
+          v-if="estimatedExportCells !== null"
+          :title="exportEstimateText"
+          :type="isExportWithinLimit ? 'info' : 'warning'"
+          :closable="false"
+          show-icon
+          class="export-estimate"
+        />
+
         <el-form-item>
           <el-button type="primary" :icon="Download" :loading="exporting" @click="handleExport">导出 Excel</el-button>
           <el-button @click="handleReset">重置</el-button>
@@ -84,14 +93,14 @@
         <el-descriptions-item label="文件格式">Excel 工作簿（.xlsx）</el-descriptions-item>
         <el-descriptions-item label="时间列">按北京时间显示</el-descriptions-item>
         <el-descriptions-item label="数据组织">每个时间点一行，每个点位一列</el-descriptions-item>
-        <el-descriptions-item label="导出限制">单次最多 31 天、30 个点位</el-descriptions-item>
+        <el-descriptions-item label="导出限制">最多 31 天、30 个点位、100 万个数据单元</el-descriptions-item>
       </el-descriptions>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { Download, Refresh } from '@element-plus/icons-vue'
 import { pageDevices } from '@/api/device'
@@ -110,12 +119,51 @@ const formRef = ref<FormInstance>()
 const devices = ref<DeviceVO[]>([])
 const deviceLoading = ref(false)
 const exporting = ref(false)
+const MAX_EXPORT_DATA_CELLS = 1_000_000
+
+const intervalSeconds: Record<string, number> = {
+  '1s': 1,
+  '10s': 10,
+  '30s': 30,
+  '1m': 60,
+  '5m': 300,
+  '10m': 600,
+  '30m': 1800,
+  '1h': 3600,
+  '6h': 21600,
+  '12h': 43200,
+  '1d': 86400
+}
 
 const form = reactive<ExportForm>({
   deviceId: '',
   interval: '10m',
   timeRange: [],
   fields: ['P1', 'P2']
+})
+
+const estimatedExportCells = computed<number | null>(() => {
+  if (form.timeRange.length !== 2 || form.fields.length === 0) return null
+  const start = new Date(form.timeRange[0].replace(' ', 'T')).getTime()
+  const end = new Date(form.timeRange[1].replace(' ', 'T')).getTime()
+  const seconds = Math.floor((end - start) / 1000)
+  const every = intervalSeconds[form.interval]
+  if (!Number.isFinite(seconds) || seconds <= 0 || !every) return null
+  return Math.ceil(seconds / every) * form.fields.length
+})
+
+const isExportWithinLimit = computed(() =>
+  estimatedExportCells.value === null || estimatedExportCells.value <= MAX_EXPORT_DATA_CELLS
+)
+
+const exportEstimateText = computed(() => {
+  const estimate = estimatedExportCells.value
+  if (estimate === null) return ''
+  const formatted = estimate.toLocaleString('zh-CN')
+  if (estimate <= MAX_EXPORT_DATA_CELLS) {
+    return `预计导出 ${formatted} 个数据单元，当前组合可以导出。`
+  }
+  return `预计导出 ${formatted} 个数据单元，超过单次 1,000,000 限制。请缩短时间范围、减少点位或调大统计间隔。`
 })
 
 const rules: FormRules<ExportForm> = {
@@ -262,6 +310,10 @@ function resolveFilename(disposition?: string): string {
 async function handleExport() {
   if (!formRef.value) return
   await formRef.value.validate()
+  if (!isExportWithinLimit.value) {
+    ElMessage.error(exportEstimateText.value)
+    return
+  }
   exporting.value = true
   try {
     const selectedDevice = devices.value.find(device => device.deviceId === form.deviceId)
@@ -275,8 +327,8 @@ async function handleExport() {
     }) as any
     downloadFile(response.data, resolveFilename(response.headers?.['content-disposition']))
     ElMessage.success('导出完成')
-  } catch (e) {
-    ElMessage.error('导出失败，请检查设备、时间范围和数据间隔')
+  } catch {
+    // The shared response interceptor already displays the server-provided error.
   } finally {
     exporting.value = false
   }
@@ -310,5 +362,9 @@ onMounted(loadDevices)
 
 .preview-card {
   margin-top: 16px;
+}
+
+.export-estimate {
+  margin: -6px 0 16px 96px;
 }
 </style>

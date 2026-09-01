@@ -43,6 +43,18 @@ public class SysAccount implements Serializable {
 
     private String status;
 
+    /**
+     * Whether an administrator has verified this backend account using the
+     * account holder's name and bound mobile number.
+     */
+    private Boolean identityVerified;
+
+    private LocalDateTime identityVerifiedAt;
+
+    private Long identityVerifiedBy;
+
+    private String identityVerificationMethod;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
