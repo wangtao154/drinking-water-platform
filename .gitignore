@@ -41,6 +41,7 @@ test-*.html
 
 # Docker data
 docker/data/
+docker/resource-monitor/data/
 docker/zoneinfo/
 docker/wechatpay/certs/
 docker/https-proxy/certs/

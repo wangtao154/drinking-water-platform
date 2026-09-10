@@ -34,6 +34,10 @@
         </el-form-item>
       </el-form>
     </div>
+    <footer class="login-footer">
+      <span>Copyright © 2017-2026 贵州省聚控云科技有限公司 版权所有</span>
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">黔ICP备19008617号</a>
+    </footer>
     <AiAssistantPolicyDialog v-model="policyDialogVisible" />
   </div>
 </template>
@@ -100,10 +104,13 @@ async function handleLogin() {
 
 <style scoped lang="scss">
 .login-container {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  min-height: 100vh;
+  padding: 32px 16px 68px;
+  box-sizing: border-box;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
@@ -135,4 +142,31 @@ async function handleLogin() {
 .ai-consent-item :deep(.el-form-item__content) { line-height: 1.55; }
 .ai-consent-item :deep(.el-checkbox__label) { color: #718096; font-size: 12px; white-space: normal; }
 .policy-link { margin: 0; padding: 0; border: 0; background: transparent; color: #1677ff; cursor: pointer; font: inherit; }
+.login-footer {
+  position: absolute;
+  right: 16px;
+  bottom: 20px;
+  left: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+
+  a {
+    color: inherit;
+    text-decoration: none;
+
+    &:hover,
+    &:focus-visible { color: #fff; text-decoration: underline; }
+  }
+}
+
+@media (max-width: 520px) {
+  .login-container { padding-bottom: 96px; }
+  .login-box { width: min(400px, 100%); padding: 28px 24px; }
+  .login-footer { flex-direction: column; gap: 2px; bottom: 16px; }
+}
 </style>

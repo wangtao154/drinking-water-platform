@@ -186,6 +186,7 @@ export const asyncRoutes: RouteRecordRaw[] = [
       { path: 'roles', name: 'SystemRoles', component: () => import('@/views/system/roles.vue'), meta: { title: '角色管理', icon: 'UserFilled', permission: 'SYSTEM_ROLE' } },
       { path: 'users', name: 'SystemUsers', component: () => import('@/views/system/users.vue'), meta: { title: '账户管理', icon: 'Avatar', permission: 'SYSTEM_USER' } },
       { path: 'configs', name: 'SystemConfigs', component: () => import('@/views/system/configs.vue'), meta: { title: '系统配置', icon: 'Tools', permission: 'SYSTEM_CONFIG' } },
+      { path: 'resources', name: 'SystemResources', component: () => import('@/views/system/resources.vue'), meta: { title: '系统资源', icon: 'Cpu', permission: 'SYSTEM_RESOURCE_VIEW' } },
       { path: 'mqtt', name: 'SystemMqtt', component: () => import('@/views/system/mqtt.vue'), meta: { title: 'MQTT连接', icon: 'Connection', permission: 'SYSTEM_CONFIG' } },
       { path: 'audit-logs', name: 'SystemAuditLogs', component: () => import('@/views/system/auditLogs.vue'), meta: { title: '审计日志', icon: 'Document', permission: 'SYSTEM_AUDIT' } }
     ]
