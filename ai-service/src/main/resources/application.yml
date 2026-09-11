@@ -67,6 +67,7 @@ ai:
     max-answer-chars: ${AI_ASSISTANT_MAX_ANSWER_CHARS:4000}
     rate-limit-window-seconds: ${AI_ASSISTANT_RATE_LIMIT_WINDOW_SECONDS:60}
     max-requests-per-user: ${AI_ASSISTANT_MAX_REQUESTS_PER_USER:8}
+    external-api-default-rate-limit-per-minute: ${AI_ASSISTANT_EXTERNAL_API_DEFAULT_RATE_LIMIT_PER_MINUTE:30}
     conversation-cleanup-interval-ms: ${AI_ASSISTANT_CONVERSATION_CLEANUP_INTERVAL_MS:300000}
     audit:
       retention-months: ${AI_ASSISTANT_AUDIT_RETENTION_MONTHS:6}

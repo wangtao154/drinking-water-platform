@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 
 /**
@@ -36,7 +37,8 @@ public final class AiAuditChainHash {
                 nullable(payload.answerSummaryMasked()),
                 nullable(payload.errorCode()),
                 nullable(payload.errorSummaryMasked()),
-                nullable(payload.createdAt() == null ? null : payload.createdAt().toString()));
+                nullable(payload.createdAt() == null ? null
+                        : payload.createdAt().truncatedTo(ChronoUnit.MILLIS).toString()));
         return sha256(canonical);
     }
 

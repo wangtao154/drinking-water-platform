@@ -113,7 +113,7 @@ export interface AiAssistantAuditLogVO {
   operatorId: number
   operatorNameMasked?: string
   modelName?: string
-  resultStatus: 'SUCCESS' | 'FALLBACK' | 'REJECTED' | 'ERROR'
+  resultStatus: 'SUCCESS' | 'FALLBACK' | 'REJECTED' | 'BLOCKED' | 'ERROR'
   fallback: boolean
   toolNames?: string
   knowledgeDocumentIds?: string

@@ -17,4 +17,5 @@ public class AdminAssistantProperties {
     private int maxAnswerChars = 4000;
     private int rateLimitWindowSeconds = 60;
     private int maxRequestsPerUser = 8;
+    private int externalApiDefaultRateLimitPerMinute = 30;
 }

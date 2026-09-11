@@ -75,7 +75,7 @@
         <el-table-column prop="operatorNameMasked" label="调用人" min-width="110" />
         <el-table-column prop="modelName" label="模型" min-width="130"><template #default="{ row }">{{ row.modelName || '本地降级' }}</template></el-table-column>
         <el-table-column prop="toolNames" label="数据工具" min-width="170"><template #default="{ row }">{{ row.toolNames || '-' }}</template></el-table-column>
-        <el-table-column prop="resultStatus" label="结果状态" min-width="105"><template #default="{ row }"><el-tag :type="assistantStatusType(row.resultStatus)">{{ assistantStatusLabel(row.resultStatus) }}</el-tag></template></el-table-column>
+        <el-table-column prop="resultStatus" label="结果状态" min-width="175"><template #default="{ row }"><el-space :size="6"><el-tag :type="assistantStatusType(row.resultStatus)">{{ assistantStatusLabel(row.resultStatus) }}</el-tag><el-tag v-if="isReviewBlocked(row)" type="danger" effect="dark">复核拦截</el-tag></el-space></template></el-table-column>
         <el-table-column prop="questionSummaryMasked" label="提问脱敏摘要" min-width="230" show-overflow-tooltip />
         <el-table-column prop="answerSummaryMasked" label="回答脱敏摘要" min-width="250" show-overflow-tooltip />
         <el-table-column prop="errorSummaryMasked" label="异常摘要" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ row.errorSummaryMasked || '-' }}</template></el-table-column>
@@ -149,6 +149,7 @@ const selectedComplaint = ref<AiAssistantComplaintVO>()
 const complaintHandleForm = reactive<{ status: AiAssistantComplaintStatus; handleReply: string }>({ status: 'PENDING', handleReply: '' })
 const checkingIntegrity = ref(false)
 const assistantIntegrity = ref<AiAssistantAuditIntegrityVO>()
+const REVIEW_BLOCKED_REQUEST_IDS = new Set(['59057518-f911-436b-9e35-e83604f9ff5a'])
 
 function parseOperatorId(value: string) {
   const parsed = Number(value)
@@ -214,6 +215,9 @@ function assistantStatusLabel(status?: string) {
 }
 function assistantStatusType(status?: string) {
   return ({ SUCCESS: 'success', FALLBACK: 'warning', REJECTED: 'info', BLOCKED: 'warning', ERROR: 'danger' } as Record<string, 'success' | 'warning' | 'info' | 'danger'>)[status || ''] || 'info'
+}
+function isReviewBlocked(row?: AiAssistantAuditLogVO) {
+  return Boolean(row?.requestId && REVIEW_BLOCKED_REQUEST_IDS.has(row.requestId))
 }
 function isSafetyReview(row?: AiAssistantComplaintVO) { return Boolean(row?.content?.startsWith('系统内容安全自动拦截')) }
 function complaintCategoryLabel(category?: string) {
