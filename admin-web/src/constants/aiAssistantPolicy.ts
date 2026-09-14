@@ -1,4 +1,4 @@
-export const AI_ASSISTANT_POLICY_VERSION = '2026-08-26-v2'
+export const AI_ASSISTANT_POLICY_VERSION = '2026-09-14-v4'
 
 export const AI_ASSISTANT_POLICY_TITLE = '直饮水平台用户协议与隐私政策'
 

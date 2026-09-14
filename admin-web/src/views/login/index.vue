@@ -22,9 +22,9 @@
         <el-form-item prop="aiConsent" class="ai-consent-item">
           <el-checkbox v-model="form.aiConsent">
             我已阅读并同意
-            <button type="button" class="policy-link" @click.stop="policyDialogVisible = true">《用户协议》</button>
+            <button type="button" class="policy-link" @click.stop="openPolicy('agreement')">《用户协议》</button>
             和
-            <button type="button" class="policy-link" @click.stop="policyDialogVisible = true">《隐私政策》</button>
+            <button type="button" class="policy-link" @click.stop="openPolicy('privacy')">《隐私政策》</button>
           </el-checkbox>
         </el-form-item>
         <el-form-item>
@@ -38,7 +38,7 @@
       <span>Copyright © 2017-2026 贵州省聚控云科技有限公司 版权所有</span>
       <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">黔ICP备19008617号</a>
     </footer>
-    <AiAssistantPolicyDialog v-model="policyDialogVisible" />
+    <AiAssistantPolicyDialog v-model="policyDialogVisible" :initial-tab="policyInitialTab" />
   </div>
 </template>
 
@@ -58,6 +58,7 @@ const userStore = useUserStore()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const policyDialogVisible = ref(false)
+const policyInitialTab = ref<'agreement' | 'privacy'>('agreement')
 
 const form = reactive({
   account: '',
@@ -72,6 +73,11 @@ const rules: FormRules = {
     validator: (_rule, value, callback) => value ? callback() : callback(new Error('请先阅读并同意用户协议与隐私政策')),
     trigger: 'change'
   }]
+}
+
+function openPolicy(tab: 'agreement' | 'privacy') {
+  policyInitialTab.value = tab
+  policyDialogVisible.value = true
 }
 
 async function handleLogin() {
