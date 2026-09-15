@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS ai_assistant_api_access_log (
 
 -- 仅超级管理员和平台管理员可管理外部密钥；其他角色可在权限管理中按需授权。
 INSERT INTO sys_permission (permission_code, permission_name, permission_type, parent_id, path, sort_order, status)
-VALUES ('AI_ASSISTANT_API_KEY_MANAGE', 'AI开放接口密钥管理', 'API', 0,
+VALUES ('AI_ASSISTANT_API_KEY_MANAGE', CONVERT(0x4149E5BC80E694BEE68EA5E58FA3E5AF86E992A5E7AEA1E79086 USING utf8mb4), 'API', 0,
         '/api/v1/ai/assistant/api-keys/**', 100, 'ENABLED')
 ON DUPLICATE KEY UPDATE
     permission_name = VALUES(permission_name), permission_type = VALUES(permission_type),
